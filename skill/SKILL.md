@@ -4,7 +4,7 @@ summary: Server-side agent connection to private browser-backed Orbit Gateway.
 ---
 # Agent instructions - Orbit Gateway v2.3.1
 1. Read AI_GATEWAY_URL and AI_GATEWAY_TOKEN from SERVER secrets, never browser code, screenshots, prompts, logs or repositories.
-2. Oracle URL: https://orbit-instance.tail33fc06.ts.net:8443/v1 (Tailscale). Windows 2.3.1 URL: http://127.0.0.1:5284/v1 (local). Different tokens/profiles.
+2. Oracle URL: https://your-orbit-host.your-tailnet.ts.net:8443/v1 (Tailscale). Windows 2.3.1 URL: http://127.0.0.1:5284/v1 (local). Different tokens/profiles.
 3. Model aliases: gpt, gemini, google-ai-mode, claude. Aliases select browser provider defaults; exact foundation model is NOT guaranteed. Fast aliases/models and thinking efforts require live verification.
 4. Chat POST /v1/chat/completions JSON example: {"model":"google-ai-mode","messages":[{"role":"user","content":"Hello"}],"stream":false}. Pass Authorization: Bearer $AI_GATEWAY_TOKEN.
 5. Image POST /v1/images/generations JSON example: {"model":"google-ai-mode","prompt":"Blue planet","size":"1536x1024","response_format":"binary"}. Binary returns raw image bytes, not JSON. For JSON use response_format=b64_json.

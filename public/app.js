@@ -207,7 +207,7 @@ $('projectForm').addEventListener('submit',async e=>{
 const sample=`import OpenAI from 'openai';\n\nconst ai = new OpenAI({\n  baseURL: process.env.AI_GATEWAY_URL,\n  apiKey: process.env.AI_GATEWAY_TOKEN\n});\n\nconst reply = await ai.chat.completions.create({\n  model: 'gpt', // 'gemini' | 'google-ai-mode' | 'claude'\n  messages: [{ role: 'user', content: 'Hello!' }]\n});\n\nconsole.log(reply.choices[0].message.content);`;
 $('apiExample').textContent=sample;$('copyCode').addEventListener('click',()=>navigator.clipboard.writeText(sample).then(()=>toast('קוד הועתק')));$('copyCurl').addEventListener('click',()=>navigator.clipboard.writeText('curl -H "Authorization: Bearer $AI_GATEWAY_TOKEN" -H "Content-Type: application/json" -d \'{"model":"gpt","messages":[{"role":"user","content":"Hello"}]}\' "$AI_GATEWAY_URL/chat/completions"').then(()=>toast('דוגמת curl הועתקה')));$('copySkill').addEventListener('click',()=>navigator.clipboard.writeText([
 'Connect Orbit from a server-side agent:',
-'Oracle: AI_GATEWAY_URL=https://orbit-instance.tail33fc06.ts.net:8443/v1 (Tailscale)',
+'Oracle: AI_GATEWAY_URL=https://your-orbit-host.your-tailnet.ts.net:8443/v1 (Tailscale)',
 'Windows v2.3.1: AI_GATEWAY_URL=http://127.0.0.1:5284/v1 (local only)',
 'AI_GATEWAY_TOKEN=<store correct installation token in server secrets>',
 'Models: gpt | gemini | google-ai-mode | claude (browser defaults; exact versions not verified)',

@@ -4,7 +4,7 @@ info:
   version: 2.3.1
   description: Private browser-backed experimental AI API. Provider aliases do not assert a specific model version. Native provider projects and unverified efforts are rejected.
 servers:
-  - url: https://orbit-instance.tail33fc06.ts.net:8443
+  - url: https://your-orbit-host.your-tailnet.ts.net:8443
     description: Oracle through Tailscale
   - url: http://127.0.0.1:5284
     description: Windows 2.3.1 local

@@ -11,7 +11,7 @@ Keep your stable Windows release unchanged. Never migrate cookies or tokens from
 
 For up-to-date copy/paste instructions open the Studio API tab, or see skill/SKILL.md.
 The OpenAPI reference is docs/openapi.yaml; capabilities are docs/CAPABILITIES_HE.md.
-Oracle API: https://orbit-instance.tail33fc06.ts.net:8443/v1 (Tailscale, Bearer token).
+Oracle API: https://your-orbit-host.your-tailnet.ts.net:8443/v1 (Tailscale, Bearer token).
 Windows v2.3.1 local API: http://127.0.0.1:5284/v1 (independent token/session).
 Supported provider aliases: gpt, gemini, google-ai-mode, claude.
 Image POST /v1/images/generations accepts response_format=binary for direct image bytes or

@@ -14,6 +14,6 @@ AI Mode ו־Gemini חולקים דפדפן מחובר ותור אחד. אין צ
 
 GET /v1/usage מחזיר הצלחות דרך Orbit בלבד ב־24 שעות, לא יתרה או מכסה של Google. הבקשות עשויות להיכשל בגלל מגבלות ספק גם אם מונה Orbit נמוך.
 
-Oracle: https://orbit-instance.tail33fc06.ts.net:8443/v1 (דרך Tailscale).
+Oracle: https://your-orbit-host.your-tailnet.ts.net:8443/v1 (דרך Tailscale).
 Windows v2.3.1: http://127.0.0.1:5284/v1 (מקומי בלבד).
 החשבון/עוגיות והטוקן שונים בין התקנות. AI Mode Images נבדק חי ב־Oracle, אבל לא ב־Windows החדש.
