@@ -100,7 +100,7 @@ test('public gateway API proxies SSE to the selected mock Docker worker and reta
   }finally{await new Promise(r=>srv.api.close(r));await srv.manager.close();await rm(dir,{recursive:true,force:true});}
  });
 });
-test('Docker runtime catalog never advertises unsupported browser image extraction',async()=>{
+test('Runtime catalog hides unsupported GPT remote image while preserving other image providers',async()=>{
  const dir=await mkdtemp(path.join(tmpdir(),'orbit-models-test-'));
  const cfg={token,apiHost:'127.0.0.1',apiPort:0,uiDisabled:true,dataDir:dir,gptMode:'remote',geminiMode:'remote',claudeMode:'remote'};
  const srv=createServers(cfg,{manager:{},projects:{}});
@@ -109,8 +109,8 @@ test('Docker runtime catalog never advertises unsupported browser image extracti
   const url='http://127.0.0.1:'+srv.api.address().port;
   const res=await fetch(url+'/v1/models',{headers:{authorization:'Bearer '+token}});
   assert.equal(res.status,200);
-  for(const item of (await res.json()).data.filter(x=>x.capabilities))assert.equal(item.capabilities.image_generation,false);
+  for(const item of (await res.json()).data.filter(x=>x.capabilities)){if(item.owned_by==='gpt')assert.equal(item.capabilities.image_generation,false);else assert.equal(item.capabilities.image_generation,true);}
   const caps=await fetch(url+'/v1/capabilities',{headers:{authorization:'Bearer '+token}});
-  for(const key of ['gpt','gemini','claude'])assert.equal((await caps.clone().json()).providers[key].images,false);
+  const allProviders=(await caps.json()).providers;assert.equal(allProviders.gpt.images,false);for(const key of ['gemini','aimode','claude'])assert.equal(allProviders[key].images,true);
  }finally{await new Promise(r=>srv.api.close(r));await rm(dir,{recursive:true,force:true});}
 });

@@ -1,18 +1,17 @@
 ---
 name: Bug report
-about: Report an Orbit Gateway problem with sanitized reproduction steps
+about: Report reproducible problems without secrets
 title: "[Bug] "
 labels: bug
-assignees: ""
+assignees: []
 ---
-**Environment:** Windows standalone / Windows Docker / Oracle ARM64
 
-**Version or commit:**
+### Environment (Windows, Oracle, Docker)
 
-**Steps to reproduce:**
+### Provider/route
 
-**Expected / actual behavior:**
+### Steps to reproduce
 
-**Error code (redacted):**
+### Expected / actual result
 
-Do NOT paste .env, tokens, browser cookies, private conversations or account data.
+### Redacted error code

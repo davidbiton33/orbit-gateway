@@ -13,7 +13,20 @@ function assertWorkerProvider(config,provider){if(config.workerProvider&&config.
 async function readBuffer(req){const parts=[];let bytes=0;for await(const chunk of req){bytes+=chunk.length;if(bytes>MAX)fail(413,'payload_too_large','Request exceeds 22 MB');parts.push(chunk);}return Buffer.concat(parts);}
 async function readJson(req){try{return JSON.parse((await readBuffer(req)).toString('utf8'));}catch{fail(400,'invalid_json','Expected valid JSON body');}}
 async function imageBody(req){if(!String(req.headers['content-type']||'').startsWith('multipart/form-data'))return readJson(req);const raw=await readBuffer(req);let form;try{form=await new Request('http://localhost/upload',{method:'POST',headers:{'content-type':req.headers['content-type']},body:raw}).formData();}catch{fail(400,'invalid_multipart','Invalid multipart image upload');}const out={};for(const [key,value] of form.entries()){if(key==='image'){if(typeof value==='string')fail(400,'invalid_image','Expected image file');if(value.size>10e6)fail(413,'image_too_large','Image file exceeds 10 MB');out.image='data:'+value.type+';base64,'+Buffer.from(await value.arrayBuffer()).toString('base64');}else if(typeof value==='string')out[key]=value;}return out;}
-function validateOrigin(req,ui){if(!req.headers.origin)return;if(ui && req.headers.origin==='http://'+req.headers.host)return;fail(403,'origin_not_allowed','Browser cross-origin API calls are disabled; use server-to-server calls');}
+function isTailnetStudioHost(req,config){
+ const host=String(req.headers.host||'').toLowerCase();
+ const expected=String(config.remoteStudioHost||'').trim().toLowerCase();
+ // Studio is exposed exclusively through loopback-bound Tailscale Serve.
+ const remote=String(req.socket?.remoteAddress||'');
+ const loopback=remote==='127.0.0.1'||remote==='::1'||remote==='::ffff:127.0.0.1';
+ return loopback&&/^[a-z0-9-]+(?:\.[a-z0-9-]+)*\.ts\.net$/.test(expected)&&host===expected;
+}
+function validateOrigin(req,ui,config){
+ if(!req.headers.origin)return;
+ if(ui && /^(127\.0\.0\.1|localhost)(:\d+)?$/.test(String(req.headers.host||'')) && req.headers.origin==='http://'+req.headers.host)return;
+ if(ui&&isTailnetStudioHost(req,config)&&req.headers.origin==='https://'+req.headers.host)return;
+ fail(403,'origin_not_allowed','Browser cross-origin API calls are disabled; use server-to-server calls');
+}
 function validateMessages(m){if(!Array.isArray(m)||m.length===0||m.length>70||m.some(x=>!['system','user','assistant'].includes(x?.role)||typeof x.content!=='string'||x.content.length>24000))fail(400,'invalid_messages','messages must contain 1-70 plain-text role/content entries');}
 function endPointEdit(endpoint,input){return endpoint==='/v1/images/edits'||input.mode==='edit';}
 function imageData(input){if(input.image){if(typeof input.image!=='string'||input.image.length>15e6)fail(413,'invalid_image','Image payload too large');const m=/^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/]+={0,2})$/.exec(input.image);if(!m)fail(400,'invalid_image','Use a PNG/JPEG/WebP data URL');const b=Buffer.from(m[2],'base64');if(b.length<12||b.length>10e6)fail(400,'invalid_image','Image size invalid');const png=b.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]));const jpg=b[0]===255&&b[1]===216&&b[2]===255;const webp=b.toString('ascii',0,4)==='RIFF'&&b.toString('ascii',8,12)==='WEBP';if(!((png&&m[1]==='image/png')||(jpg&&m[1]==='image/jpeg')||(webp&&m[1]==='image/webp')))fail(400,'image_signature_mismatch','File signature does not match MIME');return {imageBase64:m[2],inputMime:m[1]};}return {};}
@@ -51,14 +64,14 @@ export function createServers(config,{manager=new ProviderManager(config),projec
    queue.run(request.provider==='aimode'?'gemini':request.provider,()=>usageCall(request,'image',()=>manager.image(request)),{signal}):usageCall(request,'image',()=>manager.image(request));
  async function dispatch(req,res,ui=false){const u=new URL(req.url,'http://localhost');const p=u.pathname;try{
   // host check makes the UI strictly a localhost-only playground; API is also loopback-only and needs Bearer auth.
-  if(ui && !/^(127\.0\.0\.1|localhost)(:\d+)?$/.test(String(req.headers.host||'')))fail(403,'invalid_host','UI is localhost-only');
+  if(ui && !/^(127\.0\.0\.1|localhost)(:\d+)?$/.test(String(req.headers.host||''))&&!isTailnetStudioHost(req,config))fail(403,'invalid_host','UI is localhost-only');
   if(ui && req.method==='GET'&&(p==='/'||['/index.html','/app.js','/style.css'].includes(p))){const name=p==='/'?'index.html':p.slice(1);const file=path.join(PUBLIC,name);const info=await stat(file);if(!info.isFile())fail(404,'not_found','Not found');res.writeHead(200,{'Content-Type':TYPES[path.extname(file)],'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'"});res.end(await readFile(file));return;}
   // Public, non-secret instance ports are for the local Studio UI only. Never expose the API token.
   if(ui&&req.method==='GET'&&p==='/play/v1/instance')return json(res,200,{ui_port:Number(process.env.ORBIT_UI_PORT||config.uiPort),api_port:Number(process.env.ORBIT_API_PORT||config.apiPort),vnc:{gpt:Number(process.env.ORBIT_GPT_VNC_PORT||6081),legacy:Number(process.env.ORBIT_GPT_LEGACY_VNC_PORT||6080),gemini:Number(process.env.ORBIT_GEMINI_VNC_PORT||6082),claude:Number(process.env.ORBIT_CLAUDE_VNC_PORT||6083)}});
   // UI's same-origin proxy never exposes the backend token to browser JavaScript.
   if(ui&&!p.startsWith('/play/'))fail(404,'not_found','UI route not found');
   if(!ui && !bearer(req,config.token)){json(res,401,{error:{message:'Valid Bearer token required',code:'unauthorized'}});return;}
-  if(req.method!=='GET')validateOrigin(req,ui);
+  if(req.method!=='GET')validateOrigin(req,ui,config);
   const endpoint=ui?p.replace(/^\/play/,''):p;
   if(req.method==='GET'&&endpoint==='/health')return json(res,200,{ok:true,version:'2.1.0-docker.1'});
   if(req.method==='GET'&&endpoint==='/v1/queue')return json(res,200,{queue:queue?.snapshot()||null});

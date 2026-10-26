@@ -17,6 +17,7 @@ import {visibleComposer,fillGptComposer} from './composer.mjs';
 import {requireGptAccess} from './access-challenge.mjs';
 import {discoverProviderProjects} from './native-projects.mjs';
 const SELECTOR_FILE=path.join(ROOT,'config','selectors.json');
+const WARM_TABS=process.env.ORBIT_WARM_TABS==='1'||process.env.ORBIT_CLOUD_ARM64==='1';
 const URLS={aimode:'https://www.google.com/ai',claude:'https://claude.ai/new',gpt:'https://chatgpt.com/',gemini:'https://gemini.google.com/app'};
 const packs=JSON.parse(await readFile(SELECTOR_FILE,'utf8'));
 let playwrightImport;
@@ -73,7 +74,7 @@ export class BrowserHub {
   return page;
  }
  async _warm(provider){
-  if(process.env.ORBIT_CLOUD_ARM64!=='1'||!['gemini','claude'].includes(provider))return;
+  if(!WARM_TABS||!['gemini','claude'].includes(provider))return;
   const current=this.warmPages.get(provider);
   if(current&&!current.isClosed())return;
   if(this.warmPromises.has(provider))return this.warmPromises.get(provider);
@@ -401,7 +402,7 @@ export class BrowserHub {
   }finally{
    await page?.close().catch(()=>{});
    this.locks.delete(provider);
-   if(process.env.ORBIT_CLOUD_ARM64==='1')void this._warm(provider).catch(()=>{});
+   if(WARM_TABS)void this._warm(provider).catch(()=>{});
   }
  }
  async send(provider,request,onProgress){
@@ -411,7 +412,7 @@ export class BrowserHub {
   try{return await this._send(provider,request,onProgress);}finally{
    this.locks.delete(provider);
    // Prepare next new-chat composer after work completes, without delaying response.
-   if(process.env.ORBIT_CLOUD_ARM64==='1'&&['gemini','claude'].includes(provider))
+   if(WARM_TABS&&['gemini','claude'].includes(provider))
     void this._warm(provider).catch(()=>{});
   }
  }
@@ -435,7 +436,7 @@ export class BrowserHub {
   else{
    // Use a previously hydrated composer, never a conversation page.
    await this.open(provider);
-   if(process.env.ORBIT_CLOUD_ARM64==='1'&&['gemini','claude'].includes(provider)){
+   if(WARM_TABS&&['gemini','claude'].includes(provider)){
     await this.warmPromises.get(provider);
     const warm=this.warmPages.get(provider);
     if(warm&&!warm.isClosed()){
@@ -537,7 +538,7 @@ export class BrowserHub {
       perf('completed',{generation_ms:Math.round(performance.now()-timing.submitted)});
       stage='persist_thread';const persisted=await this._store(threadId,provider,page,native_project_id);report('completed',{reply_chars:last.length,source:networkReply?'gpt_passive_network':'dom',elapsed_ms:Date.now()-start});
       // Keep only the latest completed chat hot for fast follow-up; preserve disk mapping.
-      if(persisted&&process.env.ORBIT_CLOUD_ARM64==='1'&&['gemini','claude'].includes(provider)){
+      if(persisted&&WARM_TABS&&['gemini','claude'].includes(provider)){
        for(const [oldId,thread] of this.threads){
         if(oldId===threadId||thread.provider!==provider)continue;
         this.threads.delete(oldId);

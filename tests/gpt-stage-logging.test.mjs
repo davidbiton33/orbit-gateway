@@ -28,7 +28,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 test('GPT editor failure prints diagnostic stage even before any response-wait',async()=>{
  const hub=new BrowserHub({dataDir:'/tmp/orbit-test'});
- const page={isClosed:()=>false,url:()=> 'https://chatgpt.com/c/test',locator:()=>({filter(){return this},first(){return this},waitFor:async()=>{throw new Error('not visible')},isVisible:async()=>false,count:async()=>0})};
+ const page={isClosed:()=>false,url:()=> 'https://chatgpt.com/c/test',locator:()=>({filter(){return this},first(){return this},waitFor:async()=>{throw new Error('not visible')},isVisible:async()=>false,count:async()=>0,allTextContents:async()=>[]})};
  hub.threads.set('thread-1',{provider:'gpt',page});
  const logs=[];const old=console.error;console.error=(...a)=>logs.push(a.join(' '));
  try{await assert.rejects(hub._send('gpt',{conversation_id:'thread-1',messages:[{role:'user',content:'secret-phrase-should-not-log'}]}),e=>e.code==='login_or_selector_changed');}

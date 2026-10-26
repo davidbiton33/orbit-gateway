@@ -1,6 +1,6 @@
 {
-  "name": "unified-ai-gateway-private",
-  "version": "2.1.4-docker.1",
+  "name": "orbit-gateway",
+  "version": "2.3.1",
   "private": true,
   "type": "module",
   "engines": {
@@ -20,5 +20,7 @@
   },
   "bin": {
     "gateway": "./bin/gateway.mjs"
-  }
+  },
+  "description": "Private browser-backed AI Gateway",
+  "license": "MIT"
 }

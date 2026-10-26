@@ -1,27 +1,57 @@
 # Orbit Gateway
 
-Browser-backed OpenAI-compatible AI gateway for ChatGPT, Gemini, Google AI Mode and Claude.
+Local-first, experimental, browser-backed AI gateway for ChatGPT, Gemini, Google AI Mode Lite and Claude, with a Hebrew Studio UI and OpenAI-compatible API.
 
-[Windows download](https://orbit-gateway.surge.sh/) | [API](docs/openapi.yaml) | [Agent skill](skill/SKILL.md) | [Tailscale](scripts/TAILSCALE-REMOTE-HE.md)
+**Download Windows:** https://orbit-gateway.surge.sh/
 
-Features: unified text chat, SSE streaming, image generation, browser login profiles, Studio, API, usage tracking, and shared Gemini/AI Mode browser and queue.
+**Guides:** [Windows setup](README-START-HE.md) · [Tailscale remote access](TAILSCALE-REMOTE-HE.md) · [Agent instructions](skill/SKILL.md) · [API schema](docs/openapi.yaml)
 
-## Installation
+> Unofficial integration. Orbit automates provider websites, not official provider APIs. Provider UI changes, account challenges and quotas can break flows.
 
-Windows: use the [download page](https://orbit-gateway.surge.sh/). Node.js 22+ required. See [Hebrew setup](INSTALL_HE.md).
+## Capabilities
 
-Oracle ARM64: see [Oracle installation](ORACLE_INSTALL_HE.md) and install-oracle.sh.
+| Provider | Chat | Image generation | Note |
+|---|---|---|---|
+| ChatGPT | Yes | Backend dependent | Legacy worker required for supported image flows |
+| Gemini | Yes | Yes | Authenticated browser |
+| Google AI Mode Lite | Experimental | Yes | Shares Gemini browser and FIFO queue |
+| Claude | Yes | SVG illustration | SVG rendered to PNG, not native photorealism |
 
-Private remote access: use [Tailscale setup](scripts/TAILSCALE-REMOTE-HE.md), with Serve rather than public Funnel.
+Aliases represent browser defaults, not guaranteed model IDs. See [capabilities](docs/CAPABILITIES_HE.md).
+
+## Windows v2.3.1 Friends preview
+
+Install Node.js 22 or newer. Clone the repository or download the ZIP from the site; in PowerShell run:
+
+    powershell -ExecutionPolicy Bypass -File .\START-WINDOWS-V2.3.1.ps1
+
+The first launch creates local .env with a random Bearer token and installs dependencies and Chromium. Studio listens on http://127.0.0.1:5283 and the API on http://127.0.0.1:5284/v1. Sign into providers manually. Never commit .env, data or browser sessions.
+
+For private remote access through your own Tailscale network:
+
+    powershell -ExecutionPolicy Bypass -File .\ENABLE-TAILSCALE.ps1
+
+Restart Orbit afterward. To expose the authenticated API too, add -ExposeApi. Read [Tailscale security and install instructions](TAILSCALE-REMOTE-HE.md). Never use Funnel: Studio has no independent password, and authorized Tailnet peers could interact with connected AI accounts.
+
+## Oracle ARM / Docker
+
+Oracle is a separate deployment with separate secrets, browser state, network and service configuration. Use [Oracle setup](ORACLE_INSTALL_HE.md) and [Oracle compose](docker-compose.oracle.yml). Do not migrate .env.docker or browser profiles into Windows.
 
 ## API
 
-Use bearer token from your own local environment and POST /v1/chat/completions or /v1/images/generations. See docs/openapi.yaml and skill/SKILL.md.
+The backend must provide AI_GATEWAY_URL and AI_GATEWAY_TOKEN as server-side secrets. Available routes include /v1/chat/completions, /v1/images/generations, /v1/models, /v1/capabilities, /v1/usage and /v1/queue. Images support binary and b64_json output and aspect ratio hints. Read [agent skill](skill/SKILL.md).
 
-## Limitations and security
+## Development
 
-Unofficial browser automation, not affiliated with AI providers. Provider UI/quotas may change. Never commit credentials, cookies or browser profiles. Studio has no separate password; do not expose it to public internet. Google AI Mode image generation validated on Oracle, not yet on all Windows devices.
+    npm ci
+    npm test
 
-## License
+GitHub Actions CI runs Node.js 22 tests and JavaScript syntax checks. These are not equivalent to verified provider sign-in or a fresh Windows install.
 
-MIT (LICENSE).
+## Security
+
+Credentials remain local. Do not upload .env, profiles, browser cookies, account content or tokens. Respect provider terms and sign-in flows. See [security policy](SECURITY.md). No affiliation with OpenAI, Google or Anthropic.
+
+## Status
+
+Community preview; AI Mode image generation verified live on Oracle. New Windows installations require their own provider sign-in and end-to-end verification.

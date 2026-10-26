@@ -13,3 +13,20 @@ jobs:
       - run: npm install --no-audit --no-fund
       - name: Run portable core tests
         run: node --test tests/catalog.test.mjs tests/provider-queue.test.mjs tests/sse.test.mjs tests/update.test.mjs tests/usage-ledger.test.mjs tests/warm-tabs.test.mjs
+
+  windows-tests:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Full Windows regression suite
+        run: npm test
+      - name: Check server and Studio source syntax
+        run: |
+          node --check src/server.mjs
+          node --check src/lib/config.mjs
+          node --check public/app.js
