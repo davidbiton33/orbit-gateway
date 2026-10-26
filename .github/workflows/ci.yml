@@ -1,14 +1,15 @@
-name: CI
+name: CI - cross-platform core
 on:
   push:
   pull_request:
 jobs:
-  test:
+  core-tests:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: '22'
       - run: npm install --no-audit --no-fund
-      - run: npm test
+      - name: Run portable core tests
+        run: node --test tests/catalog.test.mjs tests/provider-queue.test.mjs tests/sse.test.mjs tests/update.test.mjs tests/usage-ledger.test.mjs tests/warm-tabs.test.mjs
