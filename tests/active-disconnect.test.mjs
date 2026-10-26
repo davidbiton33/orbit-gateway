@@ -1,0 +1,21 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {ProviderQueue} from '../src/lib/provider-queue.mjs';
+test('disconnect after dispatch holds slot until operation settles',async()=>{
+ const queue=new ProviderQueue({limit:3,waitMs:1000});
+ let release;
+ const blocker=new Promise(r=>{release=r;});
+ const ac=new AbortController();
+ const first=queue.run('gpt',()=>blocker,{signal:ac.signal});
+ let started=false;
+ const next=queue.run('gpt',()=>{started=true;return 'next';});
+ ac.abort();
+ await new Promise(r=>setTimeout(r,15));
+ assert.equal(started,false);
+ assert.equal(queue.snapshot().gpt.abandoned_active,true);
+ assert.equal(queue.snapshot().gpt.abandoned,1);
+ release('first');
+ assert.equal(await first,'first');
+ assert.equal(await next,'next');
+ assert.equal(queue.snapshot().gpt.abandoned_active,false);
+});

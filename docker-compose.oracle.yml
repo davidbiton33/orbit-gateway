@@ -1,0 +1,163 @@
+name: ${COMPOSE_PROJECT_NAME:-orbit-gateway}
+x-worker-common: &worker-common
+  build:
+    context: .
+    dockerfile: docker/Dockerfile.oracle
+  image: ${COMPOSE_PROJECT_NAME:-orbit-gateway}-worker:2.1.4-oracle-arm64
+  restart: unless-stopped
+  init: true
+  shm_size: '512mb'
+  logging:
+    driver: json-file
+    options:
+      max-size: '10m'
+      max-file: '3'
+  env_file: .env.docker
+  environment: &worker-env
+    ORBIT_ROLE: worker
+    GATEWAY_API_HOST: 0.0.0.0
+    GATEWAY_UI_DISABLED: "true"
+    API_PORT: "4984"
+    GATEWAY_DATA_DIR: /app/data
+    GATEWAY_BROWSER_CHANNEL: chromium
+    ORBIT_CLOUD_ARM64: "1"
+    ORBIT_LOGIN_BROWSER: /app/docker/chromium-launch.sh
+    BROWSER_HEADLESS: "false"
+    CLAUDE_HEADLESS: "false"
+    GPT_MODE: browser
+    GEMINI_MODE: browser
+    CLAUDE_MODE: browser
+  expose:
+    - "4984"
+    - "6080"
+  networks:
+    - orbit-internal
+  healthcheck:
+    test: ["CMD","bash","/app/docker/healthcheck.sh"]
+    start_period: 45s
+    interval: 30s
+    timeout: 8s
+    retries: 3
+services:
+  gateway:
+    <<: *worker-common
+    environment:
+      ORBIT_ROLE: gateway
+      GATEWAY_API_HOST: 0.0.0.0
+      GATEWAY_UI_HOST: 0.0.0.0
+      GATEWAY_UI_DISABLED: "false"
+      GATEWAY_DATA_DIR: /app/data
+      GPT_MODE: remote
+      GEMINI_MODE: remote
+      CLAUDE_MODE: remote
+      GPT_ORIGIN: http://gpt:4984
+      GPT_LEGACY_ORIGIN: http://gpt-legacy:4982
+      GEMINI_ORIGIN: http://gemini:4984
+      CLAUDE_ORIGIN: http://claude:4984
+      AIMODE_MODE: remote
+      AIMODE_ORIGIN: http://gemini:4984
+    ports:
+      - "127.0.0.1:${ORBIT_UI_PORT:-4983}:4983"
+      - "127.0.0.1:${ORBIT_API_PORT:-4984}:4984"
+    volumes:
+      - gateway-data:/app/data
+    depends_on:
+      gemini:
+        condition: service_healthy
+      claude:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD","bash","/app/docker/healthcheck.sh"]
+      start_period: 20s
+      interval: 30s
+      timeout: 8s
+      retries: 3
+  gpt:
+    <<: *worker-common
+    profiles: ["gpt-docker"]
+    hostname: orbit-gpt
+    environment:
+      <<: *worker-env
+      WORKER_PROVIDER: gpt
+    ports:
+      - "127.0.0.1:${ORBIT_GPT_VNC_PORT:-6081}:6080"
+    volumes:
+      - gpt-data:/app/data
+  gpt-legacy:
+    # Dedicated, Compose-managed profile; NEVER mounts the previous system's profile.
+    profiles: ["gpt-legacy"]
+    build:
+      context: ./legacy-gpt
+      dockerfile: docker/Dockerfile.oracle
+    image: ${COMPOSE_PROJECT_NAME:-orbit-gateway}-legacy:2.1.4-oracle-arm64
+    init: true
+    restart: unless-stopped
+    shm_size: '1gb'
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'
+    env_file: .env.docker
+    environment:
+      GPT_GENERATION_TIMEOUT_MS: "360000"
+      GPT_BROWSER_CHANNEL: chromium
+      GPT_VIEWER: "1"
+      ORBIT_TAB_POOL: "1"
+      DISPLAY: ":99"
+    expose:
+      - "4982"
+    ports:
+      - "127.0.0.1:${ORBIT_GPT_LEGACY_VNC_PORT:-6080}:6080"
+    volumes:
+      - legacy-gpt-profile:/home/pwuser/profile
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - orbit-internal
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4982/health',{headers:{authorization:'Bearer '+process.env.GATEWAY_TOKEN}}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      start_period: 65s
+      interval: 30s
+      timeout: 8s
+      retries: 3
+  gemini:
+    <<: *worker-common
+    environment:
+      <<: *worker-env
+      WORKER_PROVIDER: gemini
+    ports:
+      - "127.0.0.1:${ORBIT_GEMINI_VNC_PORT:-6082}:6080"
+    volumes:
+      - gemini-data:/app/data
+  aimode:
+    <<: *worker-common
+    profiles: ["ai-mode"]
+    environment:
+      <<: *worker-env
+      WORKER_PROVIDER: aimode
+      AIMODE_MODE: browser
+      ORBIT_AIMODE_BROWSER: firefox
+    ports:
+      - "127.0.0.1:${ORBIT_AIMODE_VNC_PORT:-6084}:6080"
+    volumes:
+      - aimode-data:/app/data
+  claude:
+    <<: *worker-common
+    environment:
+      <<: *worker-env
+      WORKER_PROVIDER: claude
+    ports:
+      - "127.0.0.1:${ORBIT_CLAUDE_VNC_PORT:-6083}:6080"
+    volumes:
+      - claude-data:/app/data
+volumes:
+  gateway-data:
+  gpt-data:
+  legacy-gpt-profile:
+  gemini-data:
+  aimode-data:
+  claude-data:
+networks:
+  orbit-internal:
+    driver: bridge

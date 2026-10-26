@@ -1,0 +1,10 @@
+{
+  "name": "unified-ai-gpt-worker",
+  "version": "0.9.2",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "fastify": "5.2.1",
+    "patchright": "1.64.1"
+  }
+}

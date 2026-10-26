@@ -1,0 +1,17 @@
+# ARM64 experiment. Uses Playwright's Chromium via patchright, not Google Chrome amd64.
+FROM --platform=linux/arm64 mcr.microsoft.com/playwright:v1.56.1-noble
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+  xvfb x11vnc novnc websockify ca-certificates procps fonts-noto-core \
+  && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY docker/gpt-package.json ./package.json
+RUN npm install --omit=dev --ignore-scripts --no-audit --no-fund && npm cache clean --force \
+ && npx patchright install chromium
+COPY src/ ./src/
+COPY docker/gpt-entrypoint.sh ./docker/gpt-entrypoint.sh
+COPY docker/gpt-login.sh ./docker/gpt-login.sh
+RUN chmod +x ./docker/gpt-entrypoint.sh ./docker/gpt-login.sh && mkdir -p /home/pwuser/profile && chown -R pwuser:pwuser /home/pwuser/profile /app
+USER pwuser
+ENV DISPLAY=:99 GPT_BROWSER_CHANNEL=chromium
+ENTRYPOINT ["/app/docker/gpt-entrypoint.sh"]

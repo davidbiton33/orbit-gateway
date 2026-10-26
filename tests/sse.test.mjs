@@ -1,0 +1,4 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {Readable} from 'node:stream';import {parseStream,tokenizeSse} from '../src/lib/sse.mjs';
+test('stream tokenizer reads chunks split across frame boundaries',()=>{const out=[];const p=tokenizeSse((data,done)=>out.push(done?'DONE':data));p.push('data: {"hi":');p.push('true}\n\ndata: [DO');p.push('NE]\n\n');assert.deepEqual(out,[{hi:true},'DONE']);});
+test('stream tokenizer handles CRLF',()=>{const out=[];const p=tokenizeSse((data,done)=>out.push(done?'done':data));p.push('data: {"message":"ok"}\r\n\r\n');assert.deepEqual(out,[{message:'ok'}]);});
+test('parseStream accepts node async iterable and events',async()=>{const out=[];await parseStream(Readable.from(['event: gateway.snapshot\ndata: {"text":"Hello"}\n\n','data: [DONE]\n\n']),(d,done)=>out.push(done?'done':d));assert.deepEqual(out,[{text:'Hello'},'done']);});

@@ -1,0 +1,167 @@
+openapi: 3.1.0
+info:
+  title: Orbit Personal AI Gateway
+  version: 2.3.1
+  description: Private browser-backed experimental AI API. Provider aliases do not assert a specific model version. Native provider projects and unverified efforts are rejected.
+servers:
+  - url: https://orbit-instance.tail33fc06.ts.net:8443
+    description: Oracle through Tailscale
+  - url: http://127.0.0.1:5284
+    description: Windows 2.3.1 local
+security:
+  - bearerAuth: []
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  schemas:
+    Model:
+      type: string
+      description: gpt, gemini, google-ai-mode, claude; browser-default aliases, not exact model versions
+    Message:
+      type: object
+      required: [role, content]
+      properties:
+        role: {type: string, enum: [system, user, assistant]}
+        content: {type: string}
+paths:
+  /v1/models:
+    get:
+      summary: Browse provider aliases and named candidate models
+      responses:
+        '200': {description: Model catalog, including verification status}
+  /v1/capabilities:
+    get:
+      summary: Provider capabilities and limits
+      responses:
+        '200': {description: Capability map}
+  /v1/doctor:
+    get:
+      summary: Read provider health (without sending prompts)
+      responses:
+        '200': {description: Provider status}
+  /v1/preflight:
+    post:
+      summary: Validate model, thinking and project before dispatch
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [model]
+              properties:
+                model: {$ref: '#/components/schemas/Model'}
+                reasoning_effort: {type: string, default: auto}
+                project_id: {type: string}
+      responses:
+        '200': {description: Routing valid}
+        '422': {description: Unverified selection}
+  /v1/chat/completions:
+    post:
+      summary: OpenAI-style chat completion (SSE with stream true)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [model, messages]
+              properties:
+                model: {$ref: '#/components/schemas/Model'}
+                messages:
+                  type: array
+                  items: {$ref: '#/components/schemas/Message'}
+                stream: {type: boolean, default: false}
+                conversation_id: {type: string}
+                reasoning_effort: {type: string, default: auto}
+                project_id: {type: string}
+      responses:
+        '200': {description: Chat reply or text/event-stream}
+        '422': {description: Unsupported capability/selection}
+  /v1/images/generations:
+    post:
+      summary: Generate or edit image using a supported browser worker
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [model, prompt]
+              properties:
+                model: {$ref: '#/components/schemas/Model'}
+                prompt: {type: string}
+                mode: {type: string, enum: [generate, edit]}
+                conversation_id: {type: string}
+                aspect_ratio: {type: string, enum: [auto, '1:1', '16:9', '9:16', '4:3', '3:4', '3:2', '2:3']}
+                size: {type: string, enum: ['1024x1024', '1536x1024', '1024x1536', '1792x1024', '1024x1792'], description: Aspect ratio hint only, no guaranteed pixels}
+                response_format: {type: string, enum: [b64_json, binary], default: b64_json}
+                image: {type: string, description: data:image/png;base64,...}
+      responses:
+        '200':
+          description: Image JSON or direct bytes when response_format=binary
+          content:
+            application/json: {}
+            image/png: {}
+            image/jpeg: {}
+            image/webp: {}
+        '422': {description: Unsupported options or conflicting size and aspect ratio}
+        '504': {description: Provider did not produce a verifiable image before timeout}
+  /v1/images/edits:
+    post:
+      summary: Edit reference image using multipart or JSON request
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [model, prompt, image]
+              properties:
+                model: {$ref: '#/components/schemas/Model'}
+                prompt: {type: string}
+                image: {type: string, format: binary}
+                conversation_id: {type: string}
+      responses:
+        '200': {description: Image response}
+  /v1/usage:
+    get:
+      summary: Orbit-local request successes and optional local caps (provider quotas unknown)
+      responses:
+        '200': {description: Local usage report}
+  /v1/queue:
+    get:
+      summary: Pending/active requests; AI Mode and Gemini share one queue
+      responses:
+        '200': {description: Queue metrics}
+  /v1/compare:
+    post:
+      summary: Run the same prompt independently on 2-3 provider engines
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [prompt, models]
+              properties:
+                prompt: {type: string}
+                models: {type: array, items: {$ref: '#/components/schemas/Model'}}
+      responses:
+        '200': {description: Independent parallel results}
+  /v1/projects:
+    get:
+      summary: Local projects only, not provider-native projects
+      responses:
+        '200': {description: List}
+    post:
+      summary: Create local project metadata
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: {type: string}
+      responses:
+        '201': {description: Created}

@@ -1,0 +1,19 @@
+FROM mcr.microsoft.com/playwright:v1.55.0-noble
+
+# Google Chrome + virtual display. Browser profile lives in an isolated named volume.
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    xvfb x11vnc novnc websockify wget ca-certificates fonts-liberation \
+ && wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb -O /tmp/chrome.deb \
+ && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends /tmp/chrome.deb \
+ && rm -f /tmp/chrome.deb \
+ && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY docker/gpt-package.json ./package.json
+RUN npm install --omit=dev --ignore-scripts --no-audit --no-fund && npm cache clean --force
+COPY src/ ./src/
+COPY docker/gpt-entrypoint.sh ./docker/gpt-entrypoint.sh
+COPY docker/gpt-login.sh ./docker/gpt-login.sh
+RUN chmod +x ./docker/gpt-entrypoint.sh ./docker/gpt-login.sh && mkdir -p /home/pwuser/profile && chown -R pwuser:pwuser /home/pwuser/profile /app
+USER pwuser
+ENV DISPLAY=:99
+ENTRYPOINT ["/app/docker/gpt-entrypoint.sh"]
