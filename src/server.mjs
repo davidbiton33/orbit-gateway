@@ -1,5 +1,6 @@
 import http from 'node:http';import path from 'node:path';import {readFile,stat,mkdir,writeFile,rename} from 'node:fs/promises';import {randomUUID,timingSafeEqual} from 'node:crypto';
-import {fileURLToPath} from 'node:url';import {loadConfig,ROOT} from './lib/config.mjs';import {GatewayError,safeError,fail} from './lib/errors.mjs';
+import {fileURLToPath} from 'node:url';import {loadConfig,ROOT} from './lib/config.mjs';
+import {readStoredArtifact,artifactProvider,validArtifactId,pruneExpiredArtifacts} from './adapters/output-files.mjs';import {GatewayError,safeError,fail} from './lib/errors.mjs';
 import {catalogResponse,validateRequest,CATALOG} from './lib/catalog.mjs';import {ProjectStore} from './lib/store.mjs';
 import {ProviderManager} from './adapters/manager.mjs';
 import {ProviderQueue} from './lib/provider-queue.mjs';
@@ -32,7 +33,7 @@ function endPointEdit(endpoint,input){return endpoint==='/v1/images/edits'||inpu
 function imageData(input){if(input.image){if(typeof input.image!=='string'||input.image.length>15e6)fail(413,'invalid_image','Image payload too large');const m=/^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/]+={0,2})$/.exec(input.image);if(!m)fail(400,'invalid_image','Use a PNG/JPEG/WebP data URL');const b=Buffer.from(m[2],'base64');if(b.length<12||b.length>10e6)fail(400,'invalid_image','Image size invalid');const png=b.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]));const jpg=b[0]===255&&b[1]===216&&b[2]===255;const webp=b.toString('ascii',0,4)==='RIFF'&&b.toString('ascii',8,12)==='WEBP';if(!((png&&m[1]==='image/png')||(jpg&&m[1]==='image/jpeg')||(webp&&m[1]==='image/webp')))fail(400,'image_signature_mismatch','File signature does not match MIME');return {imageBase64:m[2],inputMime:m[1]};}return {};}
 function runtimeCatalog(config){const result=catalogResponse();for(const item of result.data)if(item.capabilities){if(item.owned_by==='gpt'&&['browser','remote'].includes(config.gptMode))item.capabilities.image_generation=false;if(item.owned_by==='gpt')item.capabilities.projects_native=config.gptMode==='legacy';if(item.owned_by==='claude')item.capabilities.projects_native=['browser','remote'].includes(config.claudeMode);}return result;}
 function runtimeProviders(config){return Object.fromEntries(Object.entries(CATALOG).map(([name,p])=>[name,{...p,images:(name==='gpt'&&['browser','remote'].includes(config[name+'Mode']))?false:p.images}]));}
-function openaiResponse(request,result){return {id:'chatcmpl-'+randomUUID(),object:'chat.completion',created:Math.floor(Date.now()/1000),model:request.model,provider:request.provider,actual_model:result.actual_model,model_selection_verified:result.selection_verified,conversation_id:result.conversation_id||null,choices:[{index:0,message:{role:'assistant',content:result.text},finish_reason:result.finish_reason||'stop'}]};}
+function openaiResponse(request,result){return {id:'chatcmpl-'+randomUUID(),object:'chat.completion',created:Math.floor(Date.now()/1000),model:request.model,provider:request.provider,actual_model:result.actual_model,model_selection_verified:result.selection_verified,conversation_id:result.conversation_id||null,...(result.attachments?.length?{attachments:result.attachments}:{}),...(result.file_warning?{file_warning:result.file_warning}:{}),choices:[{index:0,message:{role:'assistant',content:result.text},finish_reason:result.finish_reason||'stop'}]};}
 function openaiSse(res,id,model,delta,extra={}){const finish_reason=extra.finish_reason??null;const fields={...extra};delete fields.finish_reason;res.write('data: '+JSON.stringify({id,object:'chat.completion.chunk',created:Math.floor(Date.now()/1000),model,choices:[{index:0,delta,finish_reason}],...fields})+'\n\n');}
 export function createServers(config,{manager=new ProviderManager(config),projects=new ProjectStore(path.join(config.dataDir,'projects.json'))}={}){
  const queue=config.workerProvider?null:new ProviderQueue({
@@ -73,6 +74,28 @@ export function createServers(config,{manager=new ProviderManager(config),projec
   if(!ui && !bearer(req,config.token)){json(res,401,{error:{message:'Valid Bearer token required',code:'unauthorized'}});return;}
   if(req.method!=='GET')validateOrigin(req,ui,config);
   const endpoint=ui?p.replace(/^\/play/,''):p;
+  if(req.method==='GET'&&/^\/v1\/files\/[^/]+\/content$/.test(endpoint)){
+    if(ui&&(req.headers['x-orbit-file-download']!=='1'||(req.headers['sec-fetch-site']&&req.headers['sec-fetch-site']!=='same-origin')))
+      fail(403,'file_api_auth_required','File downloads require a verified same-origin Studio request');
+    const id=endpoint.split('/')[3];
+    if(!validArtifactId(id))fail(400,'invalid_file_id','Invalid file identifier');
+    let bytes,mime,filename;
+    if(config.workerProvider){
+      const artifact=await readStoredArtifact(id,config);
+      bytes=artifact.bytes;mime=artifact.metadata.mime_type;filename=artifact.metadata.filename;
+    }else{
+      const provider=artifactProvider(id);
+      const origin=provider==='gpt'?config.gptOrigin:provider==='claude'?config.claudeOrigin:config.geminiOrigin;
+      let remote;try{remote=await fetch(origin+'/v1/files/'+id+'/content',{headers:{authorization:'Bearer '+config.token},redirect:'error',signal:AbortSignal.timeout(30000)});}catch{fail(503,'file_worker_unreachable','File worker is unavailable');}
+      if(!remote.ok){let code='file_not_found';try{code=(await remote.json())?.error?.code||code;}catch{}fail(remote.status,code,'File is not available');}
+      const bytesArray=await remote.arrayBuffer();
+      if(bytesArray.byteLength>20*1024*1024)fail(502,'file_too_large','Remote file exceeds size limit');
+      bytes=Buffer.from(bytesArray);mime=remote.headers.get('content-type')||'application/octet-stream';filename=decodeURIComponent(remote.headers.get('x-orbit-filename')||'attachment');
+    }
+    const safeName=String(filename).replace(/[\r\n]/g,'').slice(0,120);
+    res.writeHead(200,{'Content-Type':mime,'Content-Disposition':"attachment; filename=\"download\"; filename*=UTF-8''"+encodeURIComponent(safeName),'X-Orbit-Filename':encodeURIComponent(safeName),'Content-Length':bytes.length,'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'});
+    res.end(bytes);return;
+  }
   if(req.method==='GET'&&endpoint==='/health')return json(res,200,{ok:true,version:'2.1.0-docker.1'});
   if(req.method==='GET'&&endpoint==='/v1/queue')return json(res,200,{queue:queue?.snapshot()||null});
   if(req.method==='GET'&&endpoint==='/v1/models')return json(res,200,runtimeCatalog(config));
@@ -126,9 +149,12 @@ export function createServers(config,{manager=new ProviderManager(config),projec
 
    if(b.stream===true){res.writeHead(200,{'Content-Type':'text/event-stream; charset=utf-8','Cache-Control':'no-cache','Connection':'keep-alive','X-Accel-Buffering':'no'});
     let shown='';const id='chatcmpl-'+randomUUID();
+   const heartbeatMs=Math.max(1000,Math.min(30000,Number(process.env.ORBIT_SSE_HEARTBEAT_MS||10000)));
+   const heartbeat=setInterval(()=>{if(!res.writableEnded&&!res.destroyed)res.write(': orbit:waiting\n\n');},heartbeatMs);heartbeat.unref?.();
+   res.write(': orbit:connected\n\n');
     try{const result=await queuedChat(request,text=>{if(!res.writableEnded){const append=text.startsWith(shown);const change=append?text.slice(shown.length):text;shown=text;if(change)openaiSse(res,id,b.model,{content:change},append?{}:{snapshot:true});}},pendingAbort.signal);
-      if(!res.writableEnded){openaiSse(res,id,b.model,{}, {conversation_id:result.conversation_id||null,actual_model:result.actual_model,model_selection_verified:result.selection_verified,finish_reason:'stop'});res.write('data: [DONE]\n\n');res.end();}
-    }catch(e){logRequestError(config,e,'stream');if(!res.writableEnded){res.write('event: gateway.error\ndata: '+JSON.stringify(safeError(e))+'\n\n');res.write('data: [DONE]\n\n');res.end();}}return;}
+      if(!res.writableEnded){openaiSse(res,id,b.model,{}, {conversation_id:result.conversation_id||null,actual_model:result.actual_model,model_selection_verified:result.selection_verified,...(result.attachments?.length?{attachments:result.attachments}:{}),...(result.file_warning?{file_warning:result.file_warning}:{}),finish_reason:'stop'});res.write('data: [DONE]\n\n');res.end();}
+    }catch(e){logRequestError(config,e,'stream');if(!res.writableEnded){res.write('event: gateway.error\ndata: '+JSON.stringify(safeError(e))+'\n\n');res.write('data: [DONE]\n\n');res.end();}}finally{clearInterval(heartbeat);}return;}
    const result=await queuedChat(request,null,pendingAbort.signal);return json(res,200,openaiResponse({...request,model:b.model},result));
   }
   if(req.method==='GET'&&endpoint==='/v1/usage'){await usageReady;return json(res,200,usage.status());}
@@ -178,6 +204,7 @@ export function createServers(config,{manager=new ProviderManager(config),projec
 export async function start(config=null){
  config ||= await loadConfig();
  if(config.token.length<43)throw Error('Missing strong GATEWAY_TOKEN. Run setup first.');
+ if(config.workerProvider){const cleanup=()=>pruneExpiredArtifacts(config).catch(()=>console.warn('[ORBIT-FILE]',JSON.stringify({phase:'retention_failed'})));void cleanup();const timer=setInterval(cleanup,6*3600000);timer.unref?.();}
  const srv=createServers(config);await Promise.all([new Promise((ok,fail)=>srv.api.listen(config.apiPort,config.apiHost).once('listening',ok).once('error',fail)),...(config.uiDisabled?[]:[new Promise((ok,fail)=>srv.ui.listen(config.uiPort,config.uiHost||'127.0.0.1').once('listening',ok).once('error',fail))])]);
  console.log(config.uiDisabled?'UI disabled in worker':'Local Studio: http://127.0.0.1:'+config.uiPort);console.log('Authenticated API: http://127.0.0.1:'+config.apiPort);
  return srv;

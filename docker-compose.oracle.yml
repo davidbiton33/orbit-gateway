@@ -3,7 +3,7 @@ x-worker-common: &worker-common
   build:
     context: .
     dockerfile: docker/Dockerfile.oracle
-  image: ${COMPOSE_PROJECT_NAME:-orbit-gateway}-worker:2.1.4-oracle-arm64
+  image: ${COMPOSE_PROJECT_NAME:-orbit-gateway}-worker:2.4.0-oracle-arm64
   restart: unless-stopped
   init: true
   shm_size: '512mb'
@@ -89,7 +89,7 @@ services:
     build:
       context: ./legacy-gpt
       dockerfile: docker/Dockerfile.oracle
-    image: ${COMPOSE_PROJECT_NAME:-orbit-gateway}-legacy:2.1.4-oracle-arm64
+    image: ${COMPOSE_PROJECT_NAME:-orbit-gateway}-legacy:2.4.0-oracle-arm64
     init: true
     restart: unless-stopped
     shm_size: '1gb'

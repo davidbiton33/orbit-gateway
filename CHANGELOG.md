@@ -1,3 +1,10 @@
+## 2.4.0 (2026-10-29)
+
+- Verified GPT CSV attachments and Gemini native Word/downloads.
+- Gemini table-to-CSV and DOCX-to-PDF conversion using LibreOffice.
+- Protected file downloads, bounded retention, Studio links, streaming and image progress fixes.
+- One release for Windows and Oracle ARM64, with dedicated platform launchers.
+
 # Changelog
 
 ## v2.3.1 — 2026-10-26 (Friends preview)

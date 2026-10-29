@@ -2,6 +2,7 @@ import {readFile,mkdir,writeFile,rename} from 'node:fs/promises';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {fail} from '../lib/errors.mjs';
+import {snapshotOutputLinks,newOutputLinks,captureOutputLinks} from './output-files.mjs';
 
 // AI Mode is Search, not Gemini App. All selectors are provisional until UI smoke succeeds.
 // Never return Google search snippets as if they were a generative answer.
@@ -54,6 +55,7 @@ export async function aiModeChat(hub,request,onProgress){
     return replies.at(-1)||'';
   }).catch(()=>'');
   const before=await snapshot();
+  const beforeFiles=await snapshotOutputLinks(page,provider);
   const prompt=request.messages?.filter(x=>x.role==='user').at(-1)?.content;
   if(typeof prompt!=='string'||!prompt.trim())fail(400,'invalid_prompt','User message required');
   await editor.fill(prompt,{timeout:12000});
@@ -61,18 +63,30 @@ export async function aiModeChat(hub,request,onProgress){
   submitted=true;
   const verificationRequired=async()=>page.frames().some(frame=>/recaptcha|google.com\/sorry/i.test(frame.url()))||
     await page.locator('iframe[src*="recaptcha"],iframe[src*="/sorry/"],#recaptcha,.g-recaptcha').count().then(n=>n>0).catch(()=>false);
-  let result='',stable=0;
+  let result='',stable=0,attachments=[],fileStable=0,fileSignature='',file_warning=null;
   const limit=Date.now()+Math.min(90000,Number(hub.config.requestTimeoutMs||240000)-10000);
   while(Date.now()<limit){
    if(await verificationRequired())fail(503,'google_verification_required','Google requires manual human verification in the AI Mode browser profile');
    const text=(await snapshot()).trim();
+   const links=newOutputLinks(beforeFiles,await snapshotOutputLinks(page,provider));
+   const sig=links.map(x=>x.kind==='button'?'button:'+x.index+':'+x.filename:'link:'+x.href).join('|');
+   if(sig&&sig===fileSignature)fileStable++;else fileStable=0;fileSignature=sig;
+   if(links.length&&fileStable>=3){
+     attachments=await captureOutputLinks(page,provider,links,hub.config);
+     if(!attachments.length){
+       const actual=(await snapshot()).trim();
+       if(!actual||actual===before)fail(502,'file_download_unavailable','AI Mode file link was not downloadable');
+       result=actual;file_warning='A document link was shown but no downloadable file could be verified';
+     }
+     break;
+   }
    if(text&&text!==before){
     if(text===result)stable++;else{result=text;stable=0;onProgress?.(text);}
     if(stable>=3)break;
    }
    await page.waitForTimeout(1200);
   }
-  if(!result){
+  if(!result&&!attachments.length){
    if(await verificationRequired())fail(503,'google_verification_required','Google requires manual human verification');
    fail(503,'aimode_answer_unverified','No verified AI Mode reply found; do not retry blindly');
   }
@@ -83,8 +97,9 @@ export async function aiModeChat(hub,request,onProgress){
   await mkdir(path.dirname(hub.threadFile),{recursive:true});
   const temp=hub.threadFile+'.tmp-'+process.pid;
   await writeFile(temp,JSON.stringify(saved,null,2),{mode:0o600});await rename(temp,hub.threadFile);
+  if(!attachments.length&&!file_warning&&/(?:\b(?:create|generate|make|attach|download)\b.{0,110}\b(?:file|csv|pdf|docx|xlsx|pptx|zip)\b|קובץ.{0,70}(?:להורדה|מצורף)|(?:צור|תיצור|הכן|תכין).{0,90}קובץ)/i.test(prompt))file_warning='A downloadable file was requested but none was verified in the provider response';
   console.info('[ORBIT-AIMODE]',JSON.stringify({phase:'completed',chars:result.length}));
-  return {text:result,conversation_id:id,actual_model:'google_ai_mode_auto',selection_verified:false};
+  return {text:result,attachments,...(file_warning?{file_warning}:{}),conversation_id:id,actual_model:'google_ai_mode_auto',selection_verified:false};
  }catch(error){
   console.warn('[ORBIT-AIMODE]',JSON.stringify({phase:'failed',submitted,code:error.code||error.name}));
   throw error;

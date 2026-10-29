@@ -3,7 +3,7 @@ x-worker-common: &worker-common
   build:
     context: .
     dockerfile: docker/Dockerfile
-  image: ${COMPOSE_PROJECT_NAME:-orbit-gateway}-worker:2.1.4
+  image: ${COMPOSE_PROJECT_NAME:-orbit-gateway}-worker:2.4.0
   restart: unless-stopped
   init: true
   env_file: .env.docker
@@ -46,6 +46,8 @@ services:
       GPT_LEGACY_ORIGIN: http://gpt-legacy:4982
       GEMINI_ORIGIN: http://gemini:4984
       CLAUDE_ORIGIN: http://claude:4984
+      AIMODE_MODE: remote
+      AIMODE_ORIGIN: http://gemini:4984
     ports:
       - "127.0.0.1:${ORBIT_UI_PORT:-4983}:4983"
       - "127.0.0.1:${ORBIT_API_PORT:-4984}:4984"
@@ -79,7 +81,7 @@ services:
     build:
       context: ./legacy-gpt
       dockerfile: docker/Dockerfile.gpt
-    image: ${COMPOSE_PROJECT_NAME:-orbit-gateway}-legacy:2.1.4
+    image: ${COMPOSE_PROJECT_NAME:-orbit-gateway}-legacy:2.4.0
     init: true
     restart: unless-stopped
     shm_size: '1gb'

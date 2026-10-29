@@ -1,6 +1,7 @@
 /** Standalone OWN ChatGPT browser worker, private to Docker Compose. */
 import Fastify from 'fastify';
 import { NativeGpt } from './gpt-native.mjs';
+import {readGptFile,FILE_ID,pruneExpiredGptFiles} from './gpt-files.mjs';
 import { GatewayError, authorize, validateImageBuffer } from './security.mjs';
 
 const token=process.env.GATEWAY_TOKEN||'';
@@ -21,6 +22,13 @@ app.setErrorHandler((err,req,reply)=>{
   req.log.error({name:err?.name,code:err?.code},'GPT worker failure');
   return reply.status(500).send({error:{code:'internal_error',message:'GPT worker internal error'}});
 });
+app.get('/v1/files/:fileId/content',async(req,reply)=>{
+ const id=req.params.fileId;if(!FILE_ID.test(id))throw new GatewayError(400,'invalid_file_id','Invalid file id');
+ const {metadata,bytes}=await readGptFile(id,'/home/pwuser/profile');
+ reply.header('Content-Type',metadata.mime_type);reply.header('Content-Disposition',"attachment; filename=\"download\"; filename*=UTF-8''"+encodeURIComponent(metadata.filename));
+ reply.header('X-Orbit-Filename',encodeURIComponent(metadata.filename));
+ return reply.send(bytes);
+});
 app.get('/health',async()=>({alive:true,worker:'native-gpt-docker',display:'xvfb',session_in_docker:true}));
 app.post('/session',async()=>({editor_ready:await native.probe()}));
 // Read-only project link discovery from the user's already authenticated browser.
@@ -30,6 +38,7 @@ app.post('/projects/chats/open',async req=>native.openProjectChat(req.body?.proj
 app.post('/projects/create',async req=>native.createProject(req.body?.name));
 // Protected diagnostics only; screenshot is never logged or persisted by the worker.
 app.post('/diagnostics',async()=>native.diagnostics());
+app.post('/diagnostics/file-elements',async()=>native.inspectLastFileElements());
 app.post('/diagnostics/screenshot',async(req,reply)=>{
   const png=await native.screenshotActiveTab();
   reply.header('Content-Type','image/png');
@@ -61,6 +70,8 @@ try {
   await native.openLoginPage();
   await app.listen({host:'0.0.0.0',port:4982});
   console.log('GPT Docker worker ready on port 4982. Chrome runs HEADFUL under Xvfb.');
+  const cleanup=()=>pruneExpiredGptFiles('/home/pwuser/profile').catch(()=>console.warn('[GPT-FILE]',JSON.stringify({phase:'retention_failed'})));
+  void cleanup();const retention=setInterval(cleanup,6*3600000);retention.unref?.();
 } catch(e) {console.error('GPT worker startup failed:',String(e?.message||e).slice(0,400));await native.close();process.exit(1);}
 async function stop(){await app.close().catch(()=>{});await native.close();process.exit(0);}
 process.on('SIGINT',stop);process.on('SIGTERM',stop);

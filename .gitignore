@@ -27,3 +27,7 @@ build/
 Thumbs.db
 .vscode/
 .idea/
+
+# Release build artifacts are published through GitHub Releases, not committed.
+/release-output/
+*.bak

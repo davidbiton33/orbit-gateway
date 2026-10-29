@@ -18,7 +18,7 @@ function channels(setting){
     [{name:setting==='chromium'?'Playwright Chromium':setting==='msedge'?'Microsoft Edge':'Google Chrome',channel:setting==='chromium'?null:setting}];
 }
 export function browserOptions(settings={},channel=null){
-  const options={headless:settings.headless??false,viewport:{width:1360,height:900},args:['--disable-notifications',...(process.platform==='linux'?['--password-store=basic','--disable-dev-shm-usage']:[])],timeout:35000};
+  const options={acceptDownloads:true,headless:settings.headless??false,viewport:{width:1360,height:900},args:['--disable-notifications',...(process.platform==='linux'?['--password-store=basic','--disable-dev-shm-usage']:[])],timeout:35000};
   if(channel)options.channel=channel;
   return options;
 }

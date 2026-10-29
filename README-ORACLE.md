@@ -1,6 +1,6 @@
 # Orbit Gateway for Oracle Cloud Ampere A1 (ARM64)
 
-Separate experimental Linux/ARM64 distribution derived from stable Windows release 2.1.4. **Not production-validated.** Read `ORACLE_INSTALL_HE.md` before use.
+Oracle ARM64 distribution of the same Orbit Gateway v2.4.0 source code as Windows, with a platform-specific Docker image and separate persistent browser volumes. Validate provider sessions after any upgrade. Read `ORACLE_INSTALL_HE.md` before use.
 
 Start: `./install-oracle.sh`; manage: `./orbit-oracle.sh`; private remote API: `./tailscale-api-oracle.sh on`.
 

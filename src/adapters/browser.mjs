@@ -3,7 +3,12 @@
    Selector packs are versioned and overrideable in config/selectors.json. */
 import {readFile,mkdir,writeFile,rename} from 'node:fs/promises';import path from 'node:path';import {fileURLToPath} from 'node:url';
 import {randomUUID} from 'node:crypto';
-import {aiModeChat} from './ai-mode.mjs';import {GatewayError,fail} from '../lib/errors.mjs';
+import {aiModeChat} from './ai-mode.mjs';
+import {snapshotOutputLinks,newOutputLinks,captureOutputLinks} from './output-files.mjs';
+import {convertGeminiTableToCsv} from './table-export.mjs';
+import {isPdfRequest,wordPromptForPdf,convertWordArtifactToPdf} from './document-export.mjs';
+// ORBIT_IMAGE_PROGRESS_V2
+import {ImageProgressTracker} from './image-progress.mjs';import {GatewayError,fail} from '../lib/errors.mjs';
 import {ROOT} from '../lib/config.mjs';
 import {launchPersistentBrowser} from './browser-launch.mjs';
 import {prepareDockerProfile} from './profile-lock.mjs';
@@ -46,7 +51,7 @@ export class BrowserHub {
   let launched;
   if(useFirefox){
    const {firefox}=await import('playwright');
-   const context=await firefox.launchPersistentContext(dir,{headless:false,viewport:{width:1360,height:900},timeout:45000,acceptDownloads:false});
+   const context=await firefox.launchPersistentContext(dir,{headless:false,viewport:{width:1360,height:900},timeout:45000,acceptDownloads:true});
    launched={context,engine:'Playwright Firefox - isolated AI Mode profile',attempts:[]};
   }else{
    const chromium=await playwright();
@@ -276,13 +281,14 @@ export class BrowserHub {
    const editor=page.locator('textarea[aria-label*="Ask" i],textarea[placeholder*="Ask" i],[role="textbox"][contenteditable="true"],textarea').filter({visible:true}).first();
    await editor.waitFor({state:'visible',timeout:25000});
    const before=await page.locator('h3').evaluateAll(nodes=>nodes.filter(h=>(h.textContent||'').startsWith('AI Mode reply for')).length).catch(()=>0);
-   const prompt='Create an image (not an explanation or web search results)'+(ratio==='auto'?'':' with aspect ratio '+ratio)+': '+request.prompt;
+   const prompt='Create an image'+(ratio==='auto'?'':' with aspect ratio '+ratio)+': '+request.prompt;
    await editor.fill(prompt,{timeout:12000});
    await editor.press('Enter',{timeout:10000});
    submitted=true;
    console.info('[ORBIT-AIMODE-IMAGE]',JSON.stringify({phase:'submitted',elapsed_ms:Date.now()-started}));
    const deadline=Date.now()+Math.min(Math.max(90000,Number(this.config.requestTimeoutMs||240000)-15000),240000);
    let found=null,images=[];
+   const lifecycle=new ImageProgressTracker({startedAt:Date.now()});
    while(Date.now()<deadline){
     const state=await page.evaluate(()=>{
       const replies=[...document.querySelectorAll('h3')].filter(h=>(h.textContent||'').startsWith('AI Mode reply for'));
@@ -290,10 +296,22 @@ export class BrowserHub {
       let scope=heading?.parentElement;
       // The reply heading is followed by the generated content within the same answer container.
       const candidates=scope?[...scope.querySelectorAll('img')]:[];
-      return {replies:replies.length,images:candidates.filter(i=>i.complete&&i.naturalWidth>=384&&i.naturalHeight>=384).map(i=>({src:(i.currentSrc||i.src||''),w:i.naturalWidth,h:i.naturalHeight}))};
+       const scopeText=(heading?.parentElement?.innerText||'').replace(heading?.innerText||'','').trim();
+       // Transient generation status can appear BEFORE the first reply heading.
+       // Inspect accessible status elements only, never the whole page or prompt.
+       const statusText=[...document.querySelectorAll('[role="status"],[role="progressbar"],[aria-live],[aria-busy="true"]')].slice(-24).map(el=>(el.getAttribute('aria-label')||el.innerText||'').slice(0,140)).filter(Boolean).join(' ');
+       return {replies:replies.length,answerText:scopeText,statusText,images:candidates.filter(i=>i.complete&&i.naturalWidth>=384&&i.naturalHeight>=384).map(i=>({src:(i.currentSrc||i.src||''),w:i.naturalWidth,h:i.naturalHeight}))};
     }).catch(()=>({replies:0,images:[]}));
     images=state.images;
-    if(state.replies>before&&images.length){found=images.sort((a,b)=>b.w*b.h-a.w*a.h)[0];break;}
+    const newReplySeen=state.replies>before;
+    const verdict=lifecycle.observe({
+      now:Date.now(),imageReady:newReplySeen&&images.length>0,
+      text:newReplySeen?state.answerText:'',statusText:state.statusText
+    });
+    if(verdict.changed)console.info('[ORBIT-IMAGE-STATE]',JSON.stringify({provider:'aimode',state:verdict.phase}));
+    if(verdict.phase==='image_ready'){found=images.sort((a,b)=>b.w*b.h-a.w*a.h)[0];break;}
+    if(verdict.phase==='text_error'||verdict.phase==='text_only'||verdict.phase==='stalled')
+      fail(502,verdict.phase==='stalled'?'image_generation_stalled':'image_provider_text_reply','Google AI Mode did not produce an image: '+verdict.text.slice(0,180));
     await page.waitForTimeout(1800);
    }
    if(!found){
@@ -346,7 +364,9 @@ export class BrowserHub {
    const selector='model-response img, [id^="model-response-message-content"] img, [data-test-id="model-response"] img';
    const snapshot=async()=>page.locator(selector).evaluateAll(images=>images.filter(im=>im.complete&&im.naturalWidth>=400&&im.naturalHeight>=400).map(im=>({src:im.currentSrc||im.src,w:im.naturalWidth,h:im.naturalHeight}))).catch(()=>[]);
    const before=new Set((await snapshot()).map(i=>i.src));
-   await editor.fill('Create and output the image itself (not a text description). '+(ratio==='auto'?'':'Use '+ratio+' aspect ratio. ')+request.prompt,{timeout:12000});
+   const initialText=await assistantSnapshot(page,provider,packs.gemini);
+   const lifecycle=new ImageProgressTracker({startedAt:Date.now()});
+   await editor.fill('Create image. '+(ratio==='auto'?'':'Use '+ratio+' aspect ratio. ')+request.prompt,{timeout:12000});
    const send=page.locator(packs.gemini.send.join(',')).filter({visible:true}).first();
    if(await send.isVisible().catch(()=>false))await send.click({timeout:9000});
    else await editor.press('Enter',{timeout:9000});
@@ -356,12 +376,20 @@ export class BrowserHub {
    let candidate=null,seenAt=0;
    while(Date.now()<deadline){
     const images=(await snapshot()).filter(i=>!before.has(i.src));
-    if(images.length){
-     candidate=images.sort((a,b)=>b.w*b.h-a.w*a.h)[0];
-     if(!seenAt)seenAt=Date.now();
-     if(Date.now()-seenAt>=3500)break;
-    }
-    await page.waitForTimeout(1000);
+     if(images.length){
+      candidate=images.sort((a,b)=>b.w*b.h-a.w*a.h)[0];
+      if(!seenAt)seenAt=Date.now();
+     }
+     // Only provider-owned response/status nodes; never scan the user's prompt.
+     const answer=newReply(initialText,await assistantSnapshot(page,provider,packs.gemini));
+     const statusText=await page.locator('[role="status"],[role="progressbar"],[aria-live],[aria-busy="true"]').evaluateAll(nodes=>nodes.slice(-24).map(n=>(n.getAttribute('aria-label')||n.innerText||'').slice(0,140)).filter(Boolean).join(' ')).catch(()=>'');
+     const busy=await page.locator(packs.gemini.stop.join(',')).first().isVisible().catch(()=>false);
+     const verdict=lifecycle.observe({now:Date.now(),imageReady:Boolean(candidate),text:answer,statusText,busy});
+     if(verdict.changed)console.info('[ORBIT-IMAGE-STATE]',JSON.stringify({provider:'gemini',state:verdict.phase}));
+     if(verdict.phase==='image_ready'&&Date.now()-seenAt>=3500)break;
+     if(verdict.phase==='text_error'||verdict.phase==='text_only'||verdict.phase==='stalled')
+       fail(502,verdict.phase==='stalled'?'image_generation_stalled':'image_provider_text_reply','Gemini did not produce an image: '+verdict.text.slice(0,180));
+     await page.waitForTimeout(1000);
    }
    if(!candidate)fail(504,'gemini_image_not_detected','Gemini did not render a generated image before timeout. Prompt may have been submitted; do not retry blindly');
    const image=page.locator(selector).filter({visible:true}).filter({hasNot:page.locator('img img')}).first();
@@ -477,6 +505,7 @@ export class BrowserHub {
   // This read is independent of editor hydration and model selection.
   // Start it early, then await before filling the prompt: never arm detection late.
   const baselinePromise=assistantSnapshot(page,provider,pack);
+   const filesBeforePromise=snapshotOutputLinks(page,provider);
   stage='await_editor';report(stage,{host:(()=>{try{return new URL(page.url()).hostname;}catch{return 'unknown';}})()});
   if(provider==='gpt')await requireGptAccess(page);
   const editor=provider==='gpt'?visibleComposer(page,pack.editor):page.locator(pack.editor.join(',')).filter({visible:true}).first();
@@ -494,12 +523,15 @@ export class BrowserHub {
   perf('model_verified');
   const user=messages.filter(m=>m.role==='user').at(-1);if(!user||typeof user.content!=='string')fail(400,'missing_user_content','Last user message must be plain text');
   stage='baseline_snapshot';const before=await baselinePromise;
+   const filesBefore=await filesBeforePromise;
   perf('baseline_ready',{assistant_count:before.primary.length});
   if(network)network.arm(); // Arm before clicking Send; observe this turn only.
   stage='fill_editor';
   if(provider==='gpt')await requireGptAccess(page);
-  const activeEditor=provider==='gpt' ? await fillGptComposer(page,pack.editor,user.content,{onRetry:attempt=>report('editor_retry',{attempt})}) : editor;
-  if(provider!=='gpt')await activeEditor.fill(user.content,{timeout:9000});
+  const needsPdfConversion=provider==='gemini'&&isPdfRequest(user.content);
+  const outboundPrompt=needsPdfConversion?wordPromptForPdf(user.content):user.content;
+  const activeEditor=provider==='gpt' ? await fillGptComposer(page,pack.editor,outboundPrompt,{onRetry:attempt=>report('editor_retry',{attempt})}) : editor;
+  if(provider!=='gpt')await activeEditor.fill(outboundPrompt,{timeout:9000});
   perf('composer_filled',{prompt_chars:user.content.length});
   // Inspect once before submit. If the send button is absent, Enter is the
   // existing provider fallback. Never retry clicking after an ambiguous send.
@@ -515,6 +547,7 @@ export class BrowserHub {
   stage='await_response';report(stage,{submitted:true,baseline_primary:before.primary.length,baseline_fallback:before.fallback.length});
   const threadId=conversation_id||randomUUID();this.threads.set(threadId,{provider,page,nativeProjectId:native_project_id||null});
   const start=Date.now();let last='',stable=0,lastDiagnosticsAt=0,latest=before,noticeChecked=false,lastEmitted='';
+   let fileStable=0,fileSignature='';
   while(Date.now()-start<timeoutMs){
     latest=await assistantSnapshot(page,provider,pack);
     const domReply=newReply(before,latest);
@@ -530,9 +563,37 @@ export class BrowserHub {
       onProgress?.(reply);
     }
     const busy=await page.locator(pack.stop.join(',')).first().isVisible().catch(()=>false);
+     const fileLinks=newOutputLinks(filesBefore,await snapshotOutputLinks(page,provider));
+     const signature=fileLinks.map(x=>x.kind==='button'?'button:'+x.index+':'+x.filename:'link:'+x.href).join('|');
+     if(signature&&signature===fileSignature)fileStable++;else fileStable=0;
+     fileSignature=signature;
     if(reply && reply===last)stable++;else stable=0;
     last=reply;
-    if(last&&((networkReply&&netState?.complete)||(stable>=3&&!busy))){
+    if((last&&((networkReply&&netState?.complete)||(stable>=3&&!busy)))||(fileLinks.length&&fileStable>=3&&!busy)){
+       const attachments=fileLinks.length?await captureOutputLinks(page,provider,fileLinks,this.config):[];
+       if(needsPdfConversion){
+        const word=attachments.find(file=>String(file.filename||'').toLowerCase().endsWith('.docx'));
+        if(word){
+         try{
+          const pdf=await convertWordArtifactToPdf({artifact:word,config:this.config,prompt:user.content});
+          attachments.splice(0,attachments.length,pdf);
+         }catch(error){
+          console.warn('[ORBIT-PDF]',JSON.stringify({provider,phase:'docx_to_pdf_failed',code:error?.code||error?.name||'unknown'}));
+         }
+        }
+       }
+       if(provider==='gemini'&&!attachments.length&&!needsPdfConversion){
+        // A Gemini Markdown/HTML table is not a native provider attachment.
+        // Convert only on an explicit CSV-file request, preserving source metadata.
+        try{
+         const converted=await convertGeminiTableToCsv({page,reply:last,prompt:user.content,config:this.config});
+         if(converted)attachments.push(converted);
+        }catch(e){console.warn('[ORBIT-FILE]',JSON.stringify({provider,phase:'table_conversion_failed',code:e?.code||e?.name||'unknown'}));}
+       }
+       const fileRequested=/(?:\b(?:create|generate|make|save|attach|download)\b.{0,110}\b(?:file|csv|pdf|docx|xlsx|pptx|zip)\b|\b(?:csv|pdf|docx|xlsx|pptx|zip)\b.{0,110}\b(?:file|download|attachment)\b|(?:צור|תיצור|הכן|תכין).{0,90}קובץ|קובץ.{0,70}(?:להורדה|מצורף))/i.test(user.content);
+       const file_warning=needsPdfConversion&&!attachments.some(x=>String(x.filename||'').toLowerCase().endsWith('.pdf'))?'PDF could not be verified; Gemini Word export or local conversion was unavailable':fileLinks.length&&!attachments.length?'A document link was shown but no downloadable file could be verified':fileRequested&&!attachments.length?'A downloadable file was requested but none was verified in the provider response':null;
+       if(file_warning&&!last.trim())fail(502,'file_download_unavailable',file_warning);
+       if(file_warning)console.warn('[ORBIT-FILE]',JSON.stringify({provider,phase:'unverified_link',count:fileLinks.length}));
       if(provider==='gemini' && /^sorry[,!]?\s+something went wrong\.?\s*(?:please try (?:your request )?again\.?\s*)?$/i.test(last.trim()))
         fail(502,'provider_ui_error','Gemini reported an error instead of an assistant response; the request may have been submitted, do not retry blindly.');
       perf('completed',{generation_ms:Math.round(performance.now()-timing.submitted)});
@@ -547,7 +608,7 @@ export class BrowserHub {
       }else if(persisted && provider!=='gpt' && page && !page.isClosed()){
        await page.close().catch(()=>{});this.threads.delete(threadId);
       }
-      return {text:last,conversation_id:threadId,actual_model:model||'browser_default',selection_verified:Boolean(model)};}
+      return {text:last,attachments,...(file_warning?{file_warning}:{}),conversation_id:threadId,actual_model:model||'browser_default',selection_verified:Boolean(model)};}
     const elapsed=Date.now()-start;
     // A transient rate/history notice may cover the entire conversation even though
     // the prompt was submitted. Dismiss only a *recognized* closeable notice once.

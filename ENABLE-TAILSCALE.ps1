@@ -2,7 +2,7 @@ param([switch]$ExposeApi)
 $ErrorActionPreference='Stop'
 $root=Split-Path -Parent $MyInvocation.MyCommand.Path
 $envFile=Join-Path $root '.env'
-if(!(Test-Path $envFile)){throw 'First run START-WINDOWS-V2.3.1.ps1 to create .env, then restart Orbit.'}
+if(!(Test-Path $envFile)){throw 'First run START-WINDOWS.ps1 to create .env, then restart Orbit.'}
 $ts=Join-Path $env:ProgramFiles 'Tailscale\tailscale.exe'
 if(!(Test-Path $ts)){throw 'Install Tailscale: winget install --id Tailscale.Tailscale --exact'}
 $status=(& $ts status --json | ConvertFrom-Json)

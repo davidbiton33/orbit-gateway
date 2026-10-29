@@ -3,7 +3,7 @@
 Tailscale Serve מאפשר להגיע לפאנל של Orbit ממחשב או טלפון המחוברים לאותו Tailnet, ב־HTTPS. אין צורך בהפניית פורטים או בדומיין ציבורי. זה אינו Tailscale Funnel — Funnel חושף את השירות לאינטרנט הציבורי, ולכן **לא להשתמש בו**.
 
 ## לפני שמתחילים
-1. מתקינים Orbit ומריצים פעם אחת את START-WINDOWS-V2.3.1.ps1 ליצירת קובץ .env. משאירים אותו בתיקייה הקבועה.
+1. מתקינים Orbit ומריצים פעם אחת את START-WINDOWS.ps1 ליצירת קובץ .env. משאירים אותו בתיקייה הקבועה.
 2. מתקינים Tailscale ב־Windows (PowerShell):
    `winget install --id Tailscale.Tailscale --exact --source winget`
    לחלופין: https://tailscale.com/download/windows

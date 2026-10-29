@@ -1,0 +1,43 @@
+name: Windows Release
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+permissions:
+  contents: write
+jobs:
+  verify-and-publish:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Full automated regression suite
+        run: npm test
+      - name: Validate syntax
+        shell: pwsh
+        run: |
+          node --check src/server.mjs
+          node --check src/adapters/browser.mjs
+          node --check src/adapters/output-files.mjs
+          node --check src/adapters/document-export.mjs
+          node --check legacy-gpt/src/gpt-native.mjs
+          node --check public/app.js
+      - name: Build release ZIP and SHA256 sums
+        shell: pwsh
+        run: python scripts/build-windows-release.py "${{ github.ref_name }}"
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Orbit Gateway ${{ github.ref_name }}
+          body_path: docs/RELEASE_NOTES_HE.md
+          fail_on_unmatched_files: true
+          files: |
+            release-output/Orbit-Gateway-Friends-${{ github.ref_name }}.zip
+            release-output/SHA256SUMS.txt

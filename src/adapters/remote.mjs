@@ -16,7 +16,7 @@ export async function remoteChat(provider,config,request,onProgress){
  const started=performance.now();let firstTextAt=null;
  const payload={model:request.model||(provider==='aimode'?'google-ai-mode':provider),messages:request.messages,conversation_id:request.conversation_id||undefined,native_project_id:request.native_project_id||undefined,reasoning_effort:request.effort||'auto',stream:true};
  const res=await send(config,provider,'/v1/chat/completions',payload,{stream:true});
- let text='',conversation_id=request.conversation_id||null,actual_model='browser_default',selection_verified=false,done=false,workerError=null;
+ let text='',attachments=[],file_warning=null,conversation_id=request.conversation_id||null,actual_model='browser_default',selection_verified=false,done=false,workerError=null;
  await parseStream(res.body,(data,complete)=>{
   if(complete){done=true;return;}
   if(!data)return;
@@ -24,6 +24,8 @@ export async function remoteChat(provider,config,request,onProgress){
   if(data.event==='gateway.error'){workerError={code:String(data.code||'remote_stream_error'),message:String(data.message||'Worker error')};return;}
   if(typeof data.conversation_id==='string')conversation_id=data.conversation_id;
   if(data.actual_model)actual_model=data.actual_model;
+  if(Array.isArray(data.attachments))attachments=data.attachments;
+  if(typeof data.file_warning==='string')file_warning=data.file_warning;
   if(typeof data.model_selection_verified==='boolean')selection_verified=data.model_selection_verified;
   const delta=data.choices?.[0]?.delta;
   if(typeof delta?.content==='string'){
@@ -39,7 +41,7 @@ export async function remoteChat(provider,config,request,onProgress){
   throw new GatewayError(status,workerError.code,workerError.message.slice(0,350));
  }
  if(!done)throw new GatewayError(502,'remote_stream_incomplete',`${provider} worker ended without DONE; do not blindly retry`);
- return {text,conversation_id,actual_model,selection_verified};
+ return {text,attachments,...(file_warning?{file_warning}:{}),conversation_id,actual_model,selection_verified};
 }
 export async function remoteImage(provider,config,request){
  const endpoint=request.mode==='edit'?'/v1/images/edits':'/v1/images/generations';

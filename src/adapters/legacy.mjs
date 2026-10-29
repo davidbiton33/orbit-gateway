@@ -10,11 +10,13 @@ export async function legacyChat(provider,config,request,onProgress){
  const route=gpt?'/chat/stream':'/v1/chat/completions';
  const payload={provider,model,messages:request.messages,stream:true,stream_mode:'snapshots',...(request.conversation_id?{conversation_id:request.conversation_id}:{}),...(gpt&&request.native_project_id?{native_project_id:request.native_project_id}:{})};
  const r=await post(origin+route,{...tokenHeader(config.token),'Content-Type':'application/json'},payload,config.requestTimeoutMs);
- let text='',done=false,conversation_id=request.conversation_id||null;let emitted='';let finishReason='stop';
+ let text='',attachments=[],file_warning=null,done=false,conversation_id=request.conversation_id||null;let emitted='';let finishReason='stop';
  await parseStream(r.body,(data,complete)=>{
   if(complete){done=true;return;}if(!data)return;
   if(data.error)throw new GatewayError(502,'upstream_stream_error',String(data.error?.message||data.error));
   if(typeof data.conversation_id==='string')conversation_id=data.conversation_id;
+  if(Array.isArray(data.attachments))attachments=data.attachments;
+  if(typeof data.file_warning==='string')file_warning=data.file_warning;
   if(['gateway.snapshot','gateway.final','gateway.reconcile'].includes(data.event||'')&&typeof data.text==='string'){
     text=data.text;
   }else if(typeof data.text==='string'&&(!data.choices||data.type==='snapshot')){
@@ -28,7 +30,7 @@ export async function legacyChat(provider,config,request,onProgress){
   if(text!==emitted){onProgress?.(text);emitted=text;}
  });
  if(!done)fail(502,'upstream_incomplete','Provider stream ended without [DONE]');
- return {text,conversation_id,finish_reason:finishReason,actual_model:'browser_default',selection_verified:false};
+ return {text,attachments,...(file_warning?{file_warning}:{}),conversation_id,finish_reason:finishReason,actual_model:'browser_default',selection_verified:false};
 }
 export async function legacyImage(provider,config,request){
  const gpt=provider==='gpt',origin=gpt?config.gptOrigin:config.geminiOrigin;

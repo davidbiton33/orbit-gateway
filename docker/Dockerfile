@@ -8,6 +8,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
  && echo 'deb [arch=amd64 signed-by=/etc/apt/keyrings/google-chrome.gpg] http://dl.google.com/linux/chrome/deb/ stable main' > /etc/apt/sources.list.d/google-chrome.list \
  && apt-get update && apt-get install -y --no-install-recommends google-chrome-stable \
  && rm -rf /var/lib/apt/lists/*
+# Local-only DOCX to PDF conversion for provider-generated Word documents.
+RUN apt-get update && apt-get install -y --no-install-recommends libreoffice-writer \
+ && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY package.json ./
 RUN npm install --omit=dev --no-audit --no-fund

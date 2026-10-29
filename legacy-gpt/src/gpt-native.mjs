@@ -5,6 +5,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import {readFile,writeFile,rename} from 'node:fs/promises';
+import {gptResponseLinks,newGptLinks,captureGptLinks} from './gpt-files.mjs';
 import path from 'node:path';
 import { sendGptPromptWithModalGuard } from './gpt-submit-action.mjs';
 import { dismissChatHistoryRateLimitDialog , startChatHistoryModalWatcher } from './gpt-history-modal.mjs';
@@ -69,15 +70,15 @@ export function makeNativeSse({id=`chatcmpl-${randomUUID()}`,model='gpt-web-chat
       }
       return data;
     },
-    complete(text,conversationId,source='gpt-dom') {
+    complete(text,conversationId,source='gpt-dom',attachments=[],file_warning=null) {
       if(completed)return '';
       completed=true;
       let data='';
       if(text!==current)data+=sseEvent('gateway.snapshot',{text,revision:true});
       if(!text.startsWith(sent))data+=sseEvent('gateway.reconcile',{text,reason:'gpt_dom_rewrote_previous_text'});
       else if(text.length>sent.length)data+=chunk({content:text.slice(sent.length)});
-      data+=sseEvent('gateway.final',{text,conversation_id:conversationId,source});
-      data+=sseEvent(null,{id,object:'chat.completion.chunk',created,model,choices:[{index:0,delta:{},finish_reason:'stop'}],conversation_id:conversationId});
+      data+=sseEvent('gateway.final',{text,conversation_id:conversationId,source,attachments,...(file_warning?{file_warning}:{})});
+      data+=sseEvent(null,{id,object:'chat.completion.chunk',created,model,choices:[{index:0,delta:{},finish_reason:'stop'}],conversation_id:conversationId,attachments,...(file_warning?{file_warning}:{})});
       return data+sseEvent(null,'[DONE]');
     },
     failure(error) {completed=true;return sseEvent('gateway.error',{error:{code:error?.code||'gpt_ui_error',message:String(error?.message||'ChatGPT failed').slice(0,350)}})+sseEvent(null,'[DONE]');},
@@ -373,8 +374,8 @@ export async function inspectGptBrowserTabs(context,activePage=null) {
   return results;
 }
 
-async function waitForAssistant(page,before,{image=false,onProgress=null,timeoutMs=GPT_TIMEOUT,network=null}={}) {
-  let lastText='',lastSig='',stableAt=0,seenImageAt=0;
+async function waitForAssistant(page,before,{image=false,onProgress=null,timeoutMs=GPT_TIMEOUT,network=null,beforeFiles=[]}={}) {
+  let lastText='',lastSig='',stableAt=0,seenImageAt=0,fileOnlyAt=0;
   const started=Date.now(), end=started+timeoutMs;
   let lastDiagnosticAt=started;
   while(Date.now()<end){
@@ -399,6 +400,11 @@ async function waitForAssistant(page,before,{image=false,onProgress=null,timeout
       const settled=Date.now()-stableAt>3500 && !stopVisible;
       if(image&&r.images.length&&settled&&Date.now()-seenImageAt>1600)return r;
       if(!image&&r.text.trim()&&settled)return r;
+      if(!image&&!r.text.trim()){
+        const links=newGptLinks(beforeFiles,await gptResponseLinks(page));
+        if(links.length&&!stopVisible){if(!fileOnlyAt)fileOnlyAt=Date.now();if(Date.now()-fileOnlyAt>1800)return {...r,text:''};}
+        else fileOnlyAt=0;
+      }
     }
     if(Date.now()-lastDiagnosticAt>=10000) {
       lastDiagnosticAt=Date.now();
@@ -503,7 +509,7 @@ export class NativeGpt {
       const {chromium}=await import(driver);
       const headless=this.config.gptHeadless !== false;
       this.#context=await chromium.launchPersistentContext(this.config.gptProfileDir,{
-        headless,...(this.config.gptChannel==='chromium'?{}:{channel:this.config.gptChannel||'chrome'}),acceptDownloads:false,
+        headless,...(this.config.gptChannel==='chromium'?{}:{channel:this.config.gptChannel||'chrome'}),acceptDownloads:true,
         viewport:headless?{width:1330,height:960}:null,permissions:[],
       });
       if(process.env.ORBIT_TAB_POOL==='1'){
@@ -537,6 +543,30 @@ export class NativeGpt {
   async diagnostics(){
     if(!this.#context)return {worker_ready:false,tabs:[]};
     return {worker_ready:true,tabs:await inspectGptBrowserTabs(this.#context,this.#activePage)};
+  }
+  async inspectLastFileElements(){
+    return this.#runExclusive(async()=>{
+      const page=this.#retainedPage||this.#activePage;
+      if(!page||page.isClosed())return {ready:false};
+      return page.evaluate(()=>{
+        const main=document.querySelector('main');
+        if(!main)return {ready:false,reason:'no_main'};
+        const selector='a[href],button,[role="button"],[tabindex],[class*="cursor-pointer"]';
+        const controls=[...main.querySelectorAll(selector)];
+        const candidates=[...main.querySelectorAll('*')].filter(el=>{
+          const text=(el.innerText||el.textContent||'').trim();
+          return text.length>0 && text.length<150 && /\.(?:csv|pdf|docx|xlsx|pptx|zip)\b/i.test(text);
+        }).slice(-35);
+        const describe=el=>({tag:el.tagName.toLowerCase(),
+          role:el.getAttribute('role')||null,testid:(el.getAttribute('data-testid')||'').slice(0,80),
+          cursor:getComputedStyle(el).cursor,classes:(el.className&&typeof el.className==='string'?el.className.split(/\s+/).filter(x=>/cursor|file|artifact|download|button/i.test(x)).slice(0,4):[]),
+          parentTag:el.parentElement?.tagName.toLowerCase()||null,
+          parentRole:el.parentElement?.getAttribute('role')||null,
+          hasHref:el.hasAttribute('href'),hasOnClick:typeof el.onclick==='function',
+          childCount:el.children.length});
+        return {ready:true,mainNodes:main.querySelectorAll('*').length,controls:controls.length,anchors:main.querySelectorAll('a[href]').length,buttons:main.querySelectorAll('button').length,roleButtons:main.querySelectorAll('[role="button"]').length,matched:candidates.map(describe)};
+      });
+    });
   }
   async listProjects(){
     return this.#runExclusive(async()=>{
@@ -695,6 +725,7 @@ export class NativeGpt {
         }
         // Capture after uploading the reference, so its preview is baseline.
         const beforeImages=wantImage?await snapshotGptImages(page):null;
+        const beforeFiles=wantImage?[]:await gptResponseLinks(page);
         // This is the SAME capture object as the preceding turn when we reuse
         // its page. Do not register page.exposeFunction twice on one tab.
         network.arm();
@@ -704,7 +735,7 @@ export class NativeGpt {
         phase='await_response';
         const answer=wantImage
           ?await waitForGptGeneratedImage(page,beforeImages,{network,timeoutMs:this.timeoutMs})
-          :await waitForAssistant(page,before,{image:false,onProgress,timeoutMs:this.timeoutMs,network});
+          :await waitForAssistant(page,before,{image:false,onProgress,timeoutMs:this.timeoutMs,network,beforeFiles});
         phase='resolve_conversation';
         const current=await resolveCompletedGptConversationUrl(page,network);
         let id=conversationId;
@@ -736,7 +767,22 @@ export class NativeGpt {
           if(previous&&previous!==page)await previous.close().catch(()=>{});
           console.info('[GPT-WARM-CONTINUATION]',JSON.stringify({retained:true,reused}));
         }
-        return {text:answer.text,conversationId:id,source:answer.source||'gpt-dom'};
+        let fileLinks=newGptLinks(beforeFiles,await gptResponseLinks(page));
+        // Download cards may become visible after the assistant text settles.
+        // Never retry sending the prompt; only inspect the completed reply.
+        const expectsFile=/\b(?:file|document|download|attachment|pdf|csv|zip|docx|xlsx|pptx)\b|קובץ|להורדה|להוריד|מצורף/i.test(prompt+' '+(answer.text||''));
+        if(!fileLinks.length&&expectsFile){
+          const fileDeadline=Date.now()+7000;
+          while(!fileLinks.length&&Date.now()<fileDeadline){
+            await page.waitForTimeout(700);
+            fileLinks=newGptLinks(beforeFiles,await gptResponseLinks(page));
+          }
+        }
+        const attachments=fileLinks.length?await captureGptLinks(page,fileLinks,this.config.gptProfileDir):[];
+        console.info('[GPT-FILE-E2E]',JSON.stringify({candidates:fileLinks.length,kinds:fileLinks.map(x=>x.kind||'link'),verified:attachments.length}));
+        const file_warning=fileLinks.length&&!attachments.length?'File link was displayed, but no file download was verified':expectsFile&&!attachments.length?'A downloadable file was requested, but none was verified in the ChatGPT response':null;
+        if(file_warning&&!answer.text?.trim())throw new GatewayError(502,'file_download_unavailable',file_warning);
+        return {text:answer.text,attachments,...(file_warning?{file_warning}:{}),conversationId:id,source:answer.source||'gpt-dom'};
       }catch(error){
         // No content, prompts, URLs, conversation IDs, tokens or cookies in logs.
         console.warn('[GPT-TURN-DIAGNOSTIC]',JSON.stringify({
@@ -772,6 +818,7 @@ export class NativeGpt {
       id:`chatcmpl-${randomUUID()}`,object:'chat.completion',created:Math.floor(Date.now()/1000),
       model:'gpt-web-chat',provider:'gpt',conversation_id:result.conversationId,usage:null,
       applied:{thinking_mode:'unverified',requested_thinking_mode:parsed.thinkingMode},
+      attachments:result.attachments||[],...(result.file_warning?{file_warning:result.file_warning}:{}),
       choices:[{index:0,message:{role:'assistant',content:result.text},finish_reason:'stop'}],
     };
   }
@@ -783,7 +830,7 @@ export class NativeGpt {
         const push=s=>{if(s)try{controller.enqueue(encoder.encode(s));}catch{}};
         push(wire.start());
         this.#execute({...parsed,onProgress:t=>push(wire.progress(t))}).then(result=>{
-          push(wire.complete(result.text,result.conversationId,result.source));try{controller.close();}catch{}
+          push(wire.complete(result.text,result.conversationId,result.source,result.attachments||[],result.file_warning||null));try{controller.close();}catch{}
         }).catch(error=>{push(wire.failure(error));try{controller.close();}catch{}});
       },
       cancel:()=>{/* UI turn may continue; do not automatically resubmit. */},

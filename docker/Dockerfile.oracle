@@ -2,7 +2,7 @@
 FROM --platform=linux/arm64 mcr.microsoft.com/playwright:v1.56.1-noble
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
-  xvfb x11vnc novnc websockify dbus-x11 curl ca-certificates procps fonts-noto-core fonts-noto-color-emoji \
+  xvfb x11vnc novnc websockify dbus-x11 curl ca-certificates procps fonts-noto-core fonts-noto-color-emoji libreoffice-writer \
   && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY package.json ./
