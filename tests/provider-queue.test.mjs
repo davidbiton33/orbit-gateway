@@ -8,8 +8,8 @@ test('FIFO per provider and cross-provider parallel execution',async()=>{
  const lock=deferred(),order=[];
  const first=q.run('gpt',async()=>{order.push('gpt1-start');await lock.promise;order.push('gpt1-end');return 1;});
  const second=q.run('gpt',async()=>{order.push('gpt2-start');return 2;});
- const claude=q.run('claude',async()=>{order.push('claude-start');return 3;});
- assert.equal(await claude,3);
+ const aimode=q.run('aimode',async()=>{order.push('aimode-start');return 3;});
+ assert.equal(await aimode,3);
  assert.equal(q.snapshot().gpt.pending,1);
  lock.release();assert.equal(await first,1);assert.equal(await second,2);
  assert.ok(order.indexOf('gpt1-end')<order.indexOf('gpt2-start'));
@@ -31,8 +31,8 @@ test('abort queued task without dispatching',async()=>{
 });
 test('timed-out queue task does not execute after active task completes',async()=>{
  const q=new ProviderQueue({limit:2,waitMs:20});const lock=deferred();
- const a=q.run('claude',()=>lock.promise);
- let sent=false;const b=q.run('claude',()=>{sent=true});
+ const a=q.run('aimode',()=>lock.promise);
+ let sent=false;const b=q.run('aimode',()=>{sent=true});
  await assert.rejects(b,e=>e.code==='queue_wait_timeout');
  lock.release();await a;assert.equal(sent,false);
 });

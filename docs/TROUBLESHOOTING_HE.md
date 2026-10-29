@@ -8,7 +8,7 @@
 | Port is occupied | לבדיקה נקייה במקביל להרצה קיימת השתמש ב־`start-clean-test.ps1` המקצה פורטים אחרים. אל תמחק volumes בגלל קונפליקט פורטים. |
 | ה־Studio מציג מסך לבן | פתח את הכתובת שהודפסה בהתקנה, נסה Ctrl+F5, ואז `.\docker.ps1 logs --tail 100 gateway`. |
 | Worker אינו משיב או `editor not found` | פתח את מסך noVNC של אותו ספק; בדוק אם נדרש login, אישור חשבון, CAPTCHA או שינוי ממשק. |
-| התחברות Google/Claude אינה מצליחה | התחבר ידנית בחלון Chrome שבתוך noVNC. אין להעתיק Cookies ממחשב/משתמש אחר ואין לעקוף בדיקות אבטחה. |
+| התחברות Gemini/Google AI Mode אינה מצליחה | התחבר ידנית בחלון Chrome שבתוך noVNC. אין להעתיק Cookies ממחשב/משתמש אחר ואין לעקוף בדיקות אבטחה. |
 | Chrome profile is in use | המתן לסיום בקשה פתוחה וסגור חלונות Chrome של אותו Worker. אל תמחק פרופיל או Docker volume. |
 | GPT Legacy אינו עולה | בחבילה 2.1.1 כל Volume נוצר אוטומטית לכל פרויקט. ודא שהפעלת `switch-gpt.ps1` מאותה תיקייה, ובדוק לוגים של gpt-legacy. אין צורך ליצור volume ידני. |
 | פרויקטי ChatGPT חסרים | ודא `GPT_BACKEND=legacy`; ב־GPT Docker חדש אין תמיכה מאומתת בפרויקטים מקוריים. ודא שהתחברת לחשבון הנכון והסרגל באתר הספק פתוח. |
@@ -23,7 +23,6 @@
 ```powershell
 .\docker.ps1 --profile gpt-docker --profile gpt-legacy ps
 .\docker.ps1 logs --tail 100 gateway
-.\docker.ps1 logs --tail 100 claude
 .\docker.ps1 logs --tail 100 gemini
 .\docker.ps1 --profile gpt-docker logs --tail 100 gpt
 .\docker.ps1 --profile gpt-legacy logs --tail 100 gpt-legacy

@@ -2,7 +2,7 @@ import {GatewayError} from './errors.mjs';
 
 // Per-provider FIFO admission control: no implicit retries after a browser send.
 export class ProviderQueue {
- constructor({providers=['gpt','gemini','claude'],limit=4,waitMs=90000}={}){
+ constructor({providers=['gpt','gemini','aimode'],limit=4,waitMs=90000}={}){
   this.limit=limit;this.waitMs=waitMs;this.slots=new Map(providers.map(p=>[p,{active:false,abandonedActive:false,abandoned:0,pending:[],started:0,completed:0,rejected:0,waits:[]}]));
  }
  snapshot(){return Object.fromEntries([...this.slots].map(([name,s])=>[name,{active:s.active,abandoned_active:s.abandonedActive,abandoned:s.abandoned,pending:s.pending.length,started:s.started,completed:s.completed,rejected:s.rejected,average_wait_ms:s.waits.length?Math.round(s.waits.reduce((a,b)=>a+b,0)/s.waits.length):0}]));}

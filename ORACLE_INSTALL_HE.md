@@ -29,10 +29,10 @@ chmod +x install-oracle.sh orbit-oracle.sh tailscale-api-oracle.sh
 ## 3. חיבור בדפדפן ללא חשיפה ציבורית
 כל הפורטים של Orbit קשורים ל-127.0.0.1 בשרת. מהמחשב האישי פתח SSH Tunnel (השאר את החלון פתוח):
 ```powershell
-ssh -N -L 4983:127.0.0.1:4983 -L 6080:127.0.0.1:6080 -L 6082:127.0.0.1:6082 -L 6083:127.0.0.1:6083 USER@SERVER_IP
+ssh -N -L 4983:127.0.0.1:4983 -L 6080:127.0.0.1:6080 -L 6082:127.0.0.1:6082 USER@SERVER_IP
 ```
-פתח מקומית: GPT Legacy `http://127.0.0.1:6080/vnc.html`, Gemini `http://127.0.0.1:6082/vnc.html`, Claude `http://127.0.0.1:6083/vnc.html`, Studio `http://127.0.0.1:4983`.
-GPT Legacy: השאר את Chrome/Chromium הפנימי פתוח, וסגור רק את טאב noVNC במחשב האישי. Gemini/Claude: הרץ בשרת `./orbit-oracle.sh exec gemini bash /app/docker/login-native.sh` (ובהתאמה `claude`), התחבר ב-noVNC, ואז סגור את חלונות Chromium הפנימיים. הסקריפט אמור לחזור למסוף.
+פתח מקומית: GPT Legacy `http://127.0.0.1:6080/vnc.html`, Gemini `http://127.0.0.1:6082/vnc.html`, Studio `http://127.0.0.1:4983`.
+Gemini: פתח את ממשק noVNC בפורט 6082, התחבר לחשבון Google בדפדפן המוצג והשאר את ה־Worker פועל. סגירת טאב noVNC בלבד אינה מסיימת את הדפדפן.
 
 ## 4. Tailscale לגישה מרחוק ל-API בלבד
 התקן Tailscale על Ubuntu לפי ההנחיות הרשמיות, הפעל `sudo tailscale up`, ואשר את המכשיר ב-Tailnet. אל תפתח פורטים 4983/4984/6080–6083 בחומת האש הציבורית.

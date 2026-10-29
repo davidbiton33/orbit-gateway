@@ -14,7 +14,7 @@ if ($project -match '^orbit-clean-') {
   if ((Get-Content $marker -Raw).Trim() -ne $project) { throw 'Clean-install marker does not match project.' }
 }
 $backend=$props['GPT_BACKEND']
-$required=@('gateway','gemini','claude', $(if ($backend -eq 'legacy') { 'gpt-legacy' } else { 'gpt' }))
+$required=@('gateway','gemini', $(if ($backend -eq 'legacy') { 'gpt-legacy' } else { 'gpt' }))
 foreach ($service in $required) {
   $id=& docker compose --env-file .env.docker -f docker-compose.yml --profile gpt-docker --profile gpt-legacy ps -q $service
   if ($LASTEXITCODE -ne 0 -or -not "$id".Trim()) { throw "Missing running service: $service" }

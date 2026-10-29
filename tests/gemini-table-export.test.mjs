@@ -40,7 +40,7 @@ test('Gemini local CSV artifact can be fetched and is explicitly marked as Orbit
   const result=await readStoredArtifact(file.id,config);
   assert.equal(result.bytes.toString('utf8'),'status,value\nok,1\n');
   assert.equal(result.metadata.source,'orbit_table_conversion');
-  await assert.rejects(()=>readStoredArtifact(file.id,{dataDir:dir,workerProvider:'claude'}),{code:'worker_scope'});
+  await assert.rejects(()=>readStoredArtifact(file.id,{dataDir:dir,workerProvider:'gpt'}),{code:'worker_scope'});
   assert.equal(await convertGeminiTableToCsv({page,reply:'No table in this answer.',prompt:'Create a CSV file',config}),null);
  }finally{await rm(dir,{recursive:true,force:true});}
 });

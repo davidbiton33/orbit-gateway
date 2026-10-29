@@ -17,7 +17,6 @@ ORBIT_API_PORT=4984
 ORBIT_GPT_LEGACY_VNC_PORT=6080
 ORBIT_GPT_VNC_PORT=6081
 ORBIT_GEMINI_VNC_PORT=6082
-ORBIT_CLAUDE_VNC_PORT=6083
 EOF
   chmod 600 .env.docker
   echo 'Created new private .env.docker; keep it secure.'
@@ -25,6 +24,6 @@ else
   echo 'Retaining existing .env.docker, tokens and Docker volumes.'
 fi
 bash ./orbit-oracle.sh config --quiet
-bash ./orbit-oracle.sh up -d --build gateway gemini claude gpt-legacy
+bash ./orbit-oracle.sh up -d --build gateway gemini gpt-legacy
 echo 'Orbit Oracle services started. Check: ./orbit-oracle.sh ps'
 echo 'Only loopback ports are exposed. Use SSH tunnel for login, Tailscale Serve for private API.'

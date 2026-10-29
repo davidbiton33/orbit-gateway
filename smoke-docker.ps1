@@ -1,5 +1,5 @@
 # Send first and continued message to selected Docker providers. No automatic retry.
-param([ValidateSet('all','gpt','gemini','claude')][string]$Provider='all')
+param([ValidateSet('all','gpt','gemini')][string]$Provider='all')
 $ErrorActionPreference='Stop'
 $root=Split-Path -Parent $MyInvocation.MyCommand.Path
 $envPath=Join-Path $root '.env.docker'
@@ -27,7 +27,7 @@ function Get-OrbitErrorDetail($record) {
   return $record.Exception.Message
 }
 $failures=0
-$providers=if ($Provider -eq 'all') {@('gpt','gemini','claude')} else {@($Provider)}
+$providers=if ($Provider -eq 'all') {@('gpt','gemini')} else {@($Provider)}
 foreach ($p in $providers) {
   Write-Host "Checking ${p}: first message + continuation" -ForegroundColor Cyan
   $conversationId=$null

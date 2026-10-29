@@ -15,7 +15,6 @@ if(!(Test-Path $envFile)){
     'STUDIO_PORT=5283',
     'GPT_MODE=browser',
     'GEMINI_MODE=browser',
-    'CLAUDE_MODE=browser',
     'AIMODE_MODE=browser',
     'GATEWAY_BROWSER_CHANNEL=auto',
     "GATEWAY_DATA_DIR=$root\data",

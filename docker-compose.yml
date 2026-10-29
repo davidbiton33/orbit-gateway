@@ -3,7 +3,7 @@ x-worker-common: &worker-common
   build:
     context: .
     dockerfile: docker/Dockerfile
-  image: ${COMPOSE_PROJECT_NAME:-orbit-gateway}-worker:2.4.0
+  image: ${COMPOSE_PROJECT_NAME:-orbit-gateway}-worker:2.4.1
   restart: unless-stopped
   init: true
   env_file: .env.docker
@@ -15,10 +15,8 @@ x-worker-common: &worker-common
     GATEWAY_DATA_DIR: /app/data
     GATEWAY_BROWSER_CHANNEL: chrome
     BROWSER_HEADLESS: "false"
-    CLAUDE_HEADLESS: "false"
     GPT_MODE: browser
     GEMINI_MODE: browser
-    CLAUDE_MODE: browser
   expose:
     - "4984"
     - "6080"
@@ -41,11 +39,9 @@ services:
       GATEWAY_DATA_DIR: /app/data
       GPT_MODE: remote
       GEMINI_MODE: remote
-      CLAUDE_MODE: remote
       GPT_ORIGIN: http://gpt:4984
       GPT_LEGACY_ORIGIN: http://gpt-legacy:4982
       GEMINI_ORIGIN: http://gemini:4984
-      CLAUDE_ORIGIN: http://claude:4984
       AIMODE_MODE: remote
       AIMODE_ORIGIN: http://gemini:4984
     ports:
@@ -55,8 +51,6 @@ services:
       - gateway-data:/app/data
     depends_on:
       gemini:
-        condition: service_healthy
-      claude:
         condition: service_healthy
     healthcheck:
       test: ["CMD","bash","/app/docker/healthcheck.sh"]
@@ -81,7 +75,7 @@ services:
     build:
       context: ./legacy-gpt
       dockerfile: docker/Dockerfile.gpt
-    image: ${COMPOSE_PROJECT_NAME:-orbit-gateway}-legacy:2.4.0
+    image: ${COMPOSE_PROJECT_NAME:-orbit-gateway}-legacy:2.4.1
     init: true
     restart: unless-stopped
     shm_size: '1gb'
@@ -115,21 +109,11 @@ services:
       - "127.0.0.1:${ORBIT_GEMINI_VNC_PORT:-6082}:6080"
     volumes:
       - gemini-data:/app/data
-  claude:
-    <<: *worker-common
-    environment:
-      <<: *worker-env
-      WORKER_PROVIDER: claude
-    ports:
-      - "127.0.0.1:${ORBIT_CLAUDE_VNC_PORT:-6083}:6080"
-    volumes:
-      - claude-data:/app/data
 volumes:
   gateway-data:
   gpt-data:
   legacy-gpt-profile:
   gemini-data:
-  claude-data:
 networks:
   orbit-internal:
     driver: bridge

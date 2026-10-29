@@ -34,13 +34,13 @@ if (-not (Test-Path -LiteralPath $envFile)) {
     $chosen = $null
     for ($offset = 0; $offset -le 30; $offset++) {
       $base = 100 * $offset
-      $candidate = @((5183+$base), (5184+$base), (6180+$base), (6181+$base), (6182+$base), (6183+$base))
+      $candidate = @((5183+$base), (5184+$base), (6180+$base), (6181+$base), (6182+$base))
       if (@($candidate | Where-Object { Is-PortBusy $_ }).Count -eq 0) { $chosen = $candidate; break }
     }
-    if ($null -eq $chosen) { throw 'Could not find six free ports for a clean test.' }
+    if ($null -eq $chosen) { throw 'Could not find five free ports for a clean test.' }
     $chosen
   } else {
-    @(4983, 4984, 6080, 6081, 6082, 6083)
+    @(4983, 4984, 6080, 6081, 6082
   }
   foreach ($port in $ports) {
     if (Is-PortBusy $port) { throw "Port $port is already occupied. For a parallel isolated test, run start-clean-test.ps1 instead." }
@@ -56,7 +56,6 @@ if (-not (Test-Path -LiteralPath $envFile)) {
     "ORBIT_GPT_LEGACY_VNC_PORT=$($ports[2])"
     "ORBIT_GPT_VNC_PORT=$($ports[3])"
     "ORBIT_GEMINI_VNC_PORT=$($ports[4])"
-    "ORBIT_CLAUDE_VNC_PORT=$($ports[5])"
   )
   $out = ($settings -join "`n") + "`n"
   [System.IO.File]::WriteAllText($envFile, $out, (New-Object System.Text.UTF8Encoding($false)))
@@ -72,13 +71,11 @@ $props = @{}
 Get-Content $envFile | ForEach-Object {
   if ($_ -match '^([A-Z_]+)=(.*)$') { $props[$Matches[1]] = $Matches[2] }
 }
-foreach ($required in @('COMPOSE_PROJECT_NAME','GATEWAY_TOKEN','ORBIT_UI_PORT','ORBIT_API_PORT','ORBIT_GPT_VNC_PORT','ORBIT_GEMINI_VNC_PORT','ORBIT_CLAUDE_VNC_PORT','ORBIT_GPT_LEGACY_VNC_PORT')) {
   if (-not $props.ContainsKey($required) -or [string]::IsNullOrWhiteSpace($props[$required])) {
     throw "Missing $required in .env.docker. This package requires a new isolated installation; do not mix it with the old release folder."
   }
 }
 if ($props['COMPOSE_PROJECT_NAME'] -notmatch '^orbit-(?:gateway|clean)-[a-f0-9]{10}$') { throw 'Invalid or reused project name. Do not attach this installer to an existing Docker project.' }
-foreach ($setting in @('ORBIT_UI_PORT','ORBIT_API_PORT','ORBIT_GPT_VNC_PORT','ORBIT_GEMINI_VNC_PORT','ORBIT_CLAUDE_VNC_PORT','ORBIT_GPT_LEGACY_VNC_PORT')) {
   $p=[int]$props[$setting]
   if (Is-PortBusy $p) {
     $existing = @(docker compose --env-file .env.docker -f docker-compose.yml ps -q 2>$null)
@@ -88,8 +85,8 @@ foreach ($setting in @('ORBIT_UI_PORT','ORBIT_API_PORT','ORBIT_GPT_VNC_PORT','OR
 Write-Host 'Validating isolated Compose project...'
 & docker compose --env-file .env.docker -f docker-compose.yml config --quiet
 if ($LASTEXITCODE -ne 0) { throw 'Invalid Compose config.' }
-Write-Host 'Building and starting Gateway, Gemini and Claude...' -ForegroundColor Yellow
-& docker compose --env-file .env.docker -f docker-compose.yml up -d --build gateway gemini claude
+Write-Host 'Building and starting Gateway and Gemini...' -ForegroundColor Yellow
+& docker compose --env-file .env.docker -f docker-compose.yml up -d --build gateway gemini
 if ($LASTEXITCODE -ne 0) { throw 'Docker build/start failed; inspect the logs.' }
 Write-Host 'Starting selected ChatGPT backend...'
 & (Join-Path $root 'switch-gpt.ps1')
@@ -100,7 +97,6 @@ $currentBackend = ((Get-Content -LiteralPath $envFile | Select-String '^GPT_BACK
 $gptViewerPort = if ($currentBackend -eq 'legacy') { $props['ORBIT_GPT_LEGACY_VNC_PORT'] } else { $props['ORBIT_GPT_VNC_PORT'] }
 Write-Host ('GPT (' + $currentBackend + '): http://127.0.0.1:' + $gptViewerPort + '/vnc.html')
 Write-Host ('Gemini: http://127.0.0.1:' + $props['ORBIT_GEMINI_VNC_PORT'] + '/vnc.html')
-Write-Host ('Claude: http://127.0.0.1:' + $props['ORBIT_CLAUDE_VNC_PORT'] + '/vnc.html')
 Write-Host ('API:    http://127.0.0.1:' + $props['ORBIT_API_PORT'] + '/v1 (Bearer token required)') -ForegroundColor Green
 Write-Host ('INSTANCE FOLDER: ' + $root) -ForegroundColor Yellow
 Write-Host 'Run docker.ps1, login scripts and tailscale-api.ps1 ONLY from this installed instance folder.' -ForegroundColor Yellow

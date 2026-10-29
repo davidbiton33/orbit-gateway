@@ -18,7 +18,7 @@ components:
   schemas:
     Model:
       type: string
-      description: gpt, gemini, google-ai-mode, claude; browser-default aliases, not exact model versions
+      description: gpt, gemini, google-ai-mode; browser-default aliases, not exact model versions
     Message:
       type: object
       required: [role, content]

@@ -13,8 +13,8 @@ const EXTENSIONS=new Map(Object.entries({
   '.md':'text/markdown','.json':'application/json','.rtf':'application/rtf'
 }));
 const MAX_BYTES=20*1024*1024;
-const FILE_ID=/^file_(gpt|gemini|claude|aimode)_([a-f0-9]{32})$/;
-const PROVIDERS=new Set(['gemini','claude','aimode']);
+const FILE_ID=/^file_(gpt|gemini|aimode)_([a-f0-9]{32})$/;
+const PROVIDERS=new Set(['gemini','aimode']);
 export function cleanFilename(input){
  const value=String(input||'').replace(/\\/g,'/').split('/').at(-1).replace(/[\x00-\x1f\x7f<>:"|?*]/g,'_').trim();
  return value.slice(0,120).replace(/^\.+/,'')||'attachment';
@@ -39,7 +39,6 @@ export function isFileCandidate(link,provider){
 }
 function trustedHost(host,provider){
  const hostname=String(host).toLowerCase();
- if(provider==='claude')return hostname==='claude.ai'||hostname.endsWith('.claude.ai')||hostname==='anthropic.com';
  return hostname==='gemini.google.com'||hostname==='www.google.com'||hostname==='google.com'
   ||hostname==='drive.google.com'||hostname==='docs.google.com'
   ||hostname.endsWith('.googleusercontent.com');
@@ -151,10 +150,7 @@ export async function snapshotOutputLinks(page,provider){
  if(!PROVIDERS.has(provider))return [];
  const list=await page.evaluate(provider=>{
   let root=null;
-  if(provider==='claude'){
-   const nodes=[...document.querySelectorAll('[data-testid="assistant-message"],[data-message-author-role="assistant"],.font-claude-response')];
-   root=nodes.at(-1)||null;
-  }else if(provider==='gemini'){
+  if(provider==='gemini'){
    root=[...document.querySelectorAll('model-response,[data-test-id="model-response"]')].at(-1)||null;
   }else{
    const headings=[...document.querySelectorAll('h3')].filter(h=>(h.textContent||'').startsWith('AI Mode reply for'));
@@ -207,7 +203,6 @@ export async function captureOutputLinks(page,provider,candidates,config){
  const results=[],seen=new Set();
  for(const link of candidates.slice(0,4)){
   const scope=provider==='gemini'?page.locator('model-response,[data-test-id="model-response"]').last():
-   provider==='claude'?page.locator('[data-testid="assistant-message"],[data-message-author-role="assistant"],.font-claude-response').last():
    page.locator('h3').filter({hasText:/^AI Mode reply for/}).last().locator('..');
   let target=null;
   if(link.kind==='card'){

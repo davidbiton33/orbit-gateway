@@ -12,8 +12,6 @@ import {ImageProgressTracker} from './image-progress.mjs';import {GatewayError,f
 import {ROOT} from '../lib/config.mjs';
 import {launchPersistentBrowser} from './browser-launch.mjs';
 import {prepareDockerProfile} from './profile-lock.mjs';
-import {profileBrowserChannel} from './native-login.mjs';
-import {hideGatewayBrowserWindow} from './windows-hide.mjs';
 import {assistantSnapshot,newReply,browserResponseDiagnostics} from './response-detection.mjs';
 import {inspectGptDialogs,dismissKnownGptNotice} from './gpt-modal.mjs';
 import {GptNetworkCapture} from './gpt-network-capture.mjs';
@@ -23,11 +21,11 @@ import {requireGptAccess} from './access-challenge.mjs';
 import {discoverProviderProjects} from './native-projects.mjs';
 const SELECTOR_FILE=path.join(ROOT,'config','selectors.json');
 const WARM_TABS=process.env.ORBIT_WARM_TABS==='1'||process.env.ORBIT_CLOUD_ARM64==='1';
-const URLS={aimode:'https://www.google.com/ai',claude:'https://claude.ai/new',gpt:'https://chatgpt.com/',gemini:'https://gemini.google.com/app'};
+const URLS={aimode:'https://www.google.com/ai',gpt:'https://chatgpt.com/',gemini:'https://gemini.google.com/app'};
 const packs=JSON.parse(await readFile(SELECTOR_FILE,'utf8'));
 let playwrightImport;
 // A dynamic import returns a Promise. Await it before reading the Chromium export.
-// This is the exact loader used by BrowserHub.open and `gateway login claude`.
+// Browser launcher used by active providers.
 export async function resolvePlaywrightChromium(importer=()=>import('playwright')){
  const module=await importer();
  if(!module?.chromium||typeof module.chromium.launchPersistentContext!=='function')
@@ -40,7 +38,7 @@ export class BrowserHub {
  constructor(config){this.config=config;this.contexts=new Map();this.pages=new Map();this.threads=new Map();this.locks=new Set();this.networkCaptures=new WeakMap();this.warmPages=new Map();this.warmPromises=new Map();this.threadFile=path.join(config.dataDir,'browser-conversations.json');
   // Cloud workers eagerly hydrate one new-chat composer at startup.
   // This never runs on the front gateway or local Windows installation.
-  if(process.env.ORBIT_CLOUD_ARM64==='1'&&process.env.ORBIT_EAGER_PREWARM==='1'&&['gemini','claude'].includes(config.workerProvider))
+  if(process.env.ORBIT_CLOUD_ARM64==='1'&&process.env.ORBIT_EAGER_PREWARM==='1'&&['gemini'].includes(config.workerProvider))
    setImmediate(()=>{void this._warm(config.workerProvider).catch(()=>{});});
  }
  async open(provider,{login=false}={}){
@@ -56,13 +54,10 @@ export class BrowserHub {
   }else{
    const chromium=await playwright();
    await prepareDockerProfile(dir,provider);
-   const browserChannel=await profileBrowserChannel(this.config.dataDir,provider,this.config.browserChannel);
-   launched=await launchPersistentBrowser(chromium,dir,{browserChannel:process.env.ORBIT_CLOUD_ARM64==='1'?'chromium':browserChannel,headless:(provider==='claude'?this.config.claudeHeadless:this.config.browserHeadless)&&!login});
+   const browserChannel=this.config.browserChannel;
+   launched=await launchPersistentBrowser(chromium,dir,{browserChannel:process.env.ORBIT_CLOUD_ARM64==='1'?'chromium':browserChannel,headless:(this.config.browserHeadless)&&!login});
   }
   const context=launched.context;
-  if(provider==='claude'&&!login&&process.platform==='win32'&&!this.config.claudeHeadless){
-    hideGatewayBrowserWindow(dir);
-  }
   console.log('[BROWSER-LAUNCH]',JSON.stringify({provider,engine:launched.engine,fallback_used:launched.attempts.length>0}));
   context.on('close',()=>{if(this.contexts.get(provider)===context){this.contexts.delete(provider);this.pages.delete(provider);}});
   this.contexts.set(provider,context);
@@ -79,7 +74,7 @@ export class BrowserHub {
   return page;
  }
  async _warm(provider){
-  if(!WARM_TABS||!['gemini','claude'].includes(provider))return;
+  if(!WARM_TABS||!['gemini'].includes(provider))return;
   const current=this.warmPages.get(provider);
   if(current&&!current.isClosed())return;
   if(this.warmPromises.has(provider))return this.warmPromises.get(provider);
@@ -104,14 +99,14 @@ export class BrowserHub {
  async _store(id,provider,page,nativeProjectId=null){try{const saved=JSON.parse(await readFile(this.threadFile,'utf8').catch(()=>'{}'));const url=page.url();if(new URL(url).origin!==new URL(URLS[provider]).origin)return;saved[id]={provider,url,native_project_id:nativeProjectId||null,updated_at:new Date().toISOString()};await mkdir(path.dirname(this.threadFile),{recursive:true});const tmp=this.threadFile+'.tmp-'+process.pid;await writeFile(tmp,JSON.stringify(saved,null,2),{mode:0o600});await rename(tmp,this.threadFile);return true;}catch(e){console.warn('Could not persist browser conversation metadata:',e.code||e.message);}}
  async close(){await Promise.allSettled([...this.contexts.values()].map(x=>x.close()));}
  async listNativeProjects(provider){
-  if(!['gpt','claude','gemini'].includes(provider))fail(400,'invalid_provider','Unsupported project provider');
+  if(!['gpt','gemini'].includes(provider))fail(400,'invalid_provider','Unsupported project provider');
   if(this.locks.has(provider))fail(409,'provider_busy','Provider is busy; retry project refresh later');
   this.locks.add(provider);
   let page;
   try{
     await this.open(provider);
     page=await this.contexts.get(provider).newPage();
-    const url=provider==='claude'?'https://claude.ai/projects':provider==='gemini'?'https://gemini.google.com/app':'https://chatgpt.com/';
+    const url=provider==='gemini'?'https://gemini.google.com/app':'https://chatgpt.com/';
     await page.goto(url,{waitUntil:'domcontentloaded',timeout:30000});
     if(provider==='gemini')await page.locator('#sidenav-section-content-notebooks a[href^="/notebook/"]').first().waitFor({state:'attached',timeout:15000}).catch(()=>{});
     else await page.waitForTimeout(1800);
@@ -122,99 +117,6 @@ export class BrowserHub {
     await page?.close().catch(()=>{});
     this.locks.delete(provider);
   }
- }
- async listClaudeProjectChats(projectId){
-  if(typeof projectId!=='string'||!/^\/project\/[a-f0-9-]{36}$/.test(projectId))fail(422,'invalid_native_project','Invalid Claude project ID');
-  if(this.locks.has('claude'))fail(409,'provider_busy','Claude is busy');
-  this.locks.add('claude');
-  let page;
-  try{
-    await this.open('claude');
-    page=await this.contexts.get('claude').newPage();
-    await page.goto('https://claude.ai'+projectId,{waitUntil:'domcontentloaded',timeout:30000});
-    await page.locator(packs.claude.editor.join(',')).filter({visible:true}).first().waitFor({state:'visible',timeout:30000});
-    if(new URL(page.url()).pathname!==projectId)fail(503,'claude_project_navigation','Claude did not open the project.');
-    const raw=await page.locator('main a[href^="/chat/"]').evaluateAll(anchors=>anchors.map(e=>({
-      href:e.getAttribute('href'),
-      title:(e.innerText||e.parentElement?.innerText||'').trim().slice(0,150)
-    })));
-    const chats=[],seen=new Set();
-    for(const item of raw){
-      if(!/^\/chat\/[a-f0-9-]{36}$/.test(item.href||''))continue;
-      if(seen.has(item.href))continue;seen.add(item.href);
-      chats.push({id:item.href.slice('/chat/'.length),title:item.title||'Claude chat',url:'https://claude.ai'+item.href,project_id:projectId});
-    }
-    return {provider:'claude',project_id:projectId,status:chats.length?'ok':'unverified_empty',chats,source:'project_page_links'};
-  }finally{await page?.close().catch(()=>{});this.locks.delete('claude');}
- }
- async openClaudeProjectChat(projectId,chatUrl){
-  if(typeof projectId!=='string'||!/^\/project\/[a-f0-9-]{36}$/.test(projectId))fail(422,'invalid_native_project','Invalid Claude project ID');
-  let target;
-  try{const u=new URL(chatUrl);if(u.origin!=='https://claude.ai'||!/^\/chat\/[a-f0-9-]{36}$/.test(u.pathname)||u.search||u.hash)throw Error('invalid');target=u.origin+u.pathname;}
-  catch{fail(422,'invalid_project_chat','Invalid Claude chat URL');}
-  if(this.locks.has('claude'))fail(409,'provider_busy','Claude is busy');
-  this.locks.add('claude');
-  let page,retain=false;
-  try{
-    await this.open('claude');
-    page=await this.contexts.get('claude').newPage();
-    await page.goto('https://claude.ai'+projectId,{waitUntil:'domcontentloaded',timeout:30000});
-    await page.locator(packs.claude.editor.join(',')).filter({visible:true}).first().waitFor({state:'visible',timeout:30000});
-    if(new URL(page.url()).pathname!==projectId)fail(503,'claude_project_navigation','Selected Claude project could not be confirmed.');
-    const chatRef='/chat/'+target.split('/').at(-1);
-    const link=page.locator('main a[href="'+chatRef+'"]');
-    if(await link.count()<1)fail(404,'project_chat_not_found','Claude did not show this conversation in the selected project.');
-    await page.goto(target,{waitUntil:'domcontentloaded',timeout:35000});
-    await page.locator(packs.claude.editor.join(',')).filter({visible:true}).first().waitFor({state:'visible',timeout:30000});
-    if(new URL(page.url()).pathname!==chatRef)fail(503,'project_chat_navigation','Claude conversation could not be confirmed.');
-    const id=randomUUID();
-    this.threads.set(id,{provider:'claude',page,nativeProjectId:projectId});
-    await this._store(id,'claude',page,projectId);
-    retain=true;
-    return {provider:'claude',project_id:projectId,conversation_id:id,messages:[],history_complete:false};
-  }finally{
-    if(!retain)await page?.close().catch(()=>{});
-    this.locks.delete('claude');
-  }
- }
- async createClaudeProject(name,description=''){
-  if(typeof name!=='string'||name.trim().length<2||name.trim().length>80)fail(422,'invalid_project_name','Project name must be 2–80 characters');
-  if(typeof description!=='string'||description.length>1000)fail(422,'invalid_project_description','Description must be less than 1000 characters');
-  if(this.locks.has('claude'))fail(409,'provider_busy','Claude is busy with another browser action');
-  this.locks.add('claude');
-  let page,submitted=false;
-  try{
-    await this.open('claude');
-    page=await this.contexts.get('claude').newPage();
-    await page.goto('https://claude.ai/projects',{waitUntil:'domcontentloaded',timeout:30000});
-    const before=await discoverProviderProjects(page,'claude');
-    if(before.projects.some(p=>p.name===name.trim()))fail(409,'project_name_exists','A Claude project with that name already exists');
-    await page.getByRole('button',{name:'New project'}).click({timeout:8000});
-    const dialog=page.getByRole('dialog');
-    await dialog.locator('input[name="name"]').fill(name.trim(),{timeout:8000});
-    if(description.trim())await dialog.locator('textarea[name="description"]').fill(description.trim());
-    submitted=true;
-    await dialog.getByRole('button',{name:'Create project'}).click({timeout:8000});
-    let confirmed=null;
-    const deadline=Date.now()+20000;
-    while(Date.now()<deadline){
-      const pathname=new URL(page.url()).pathname;
-      if(/^\/project\/[a-f0-9-]{36}$/.test(pathname)){
-        const id=pathname;
-        confirmed={id,name:name.trim(),provider:'claude',url:'https://claude.ai'+id,scope:'native_verified_id'};
-        break;
-      }
-      const known=await discoverProviderProjects(page,'claude').catch(()=>({projects:[]}));
-      confirmed=known.projects.find(p=>p.name===name.trim()&&!before.projects.some(x=>x.id===p.id));
-      if(confirmed)break;
-      await page.waitForTimeout(600);
-    }
-    if(!confirmed)throw new GatewayError(504,'project_create_unconfirmed','Claude project creation was submitted but the new project was not confirmed. Refresh before retrying.');
-    return {provider:'claude',created:true,project:confirmed};
-  }catch(error){
-    if(submitted&&!(error instanceof GatewayError))throw new GatewayError(502,'project_create_uncertain','Claude create action was submitted, but confirmation failed. Refresh before retrying.');
-    throw error;
-  }finally{await page?.close().catch(()=>{});this.locks.delete('claude');}
  }
  async probe(provider){const p=this.pages.get(provider);if(!p||p.isClosed())return {provider,connected:false,status:'needs_browser_start'};
    const pack=packs[provider];const editor=await p.locator(pack.editor.join(',')).first().isVisible().catch(()=>false);
@@ -234,35 +136,6 @@ export class BrowserHub {
      if(!selected.some(s=>s.toLowerCase().includes(label.toLowerCase()))){fail(422,'model_selection_unverified','Model selector did not confirm the choice. No prompt sent.');}
    }
    if(effort!=='auto')fail(422,'effort_unverified','Thinking effort cannot yet be confirmed for this browser interface. No prompt sent.');
- }
- async _claudeSvgImage(request){
-  if(request.mode!=='generate')fail(501,'claude_svg_edit_unimplemented','Claude SVG editing is not implemented');
-  if(request.model)fail(422,'image_model_unverified','Use the default claude model for SVG illustration');
-  const answer=await this.send('claude',{messages:[{role:'user',content:
-   'Create a standalone SVG illustration based on this description: '+request.prompt+
-   '. Respond ONLY with complete inline <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">...</svg> markup. It must be a real illustration drawn using paths, shapes and gradients, not an explanation, no markdown fences, no scripts, no images or outside resources. Maximum 12000 characters.'}],model:null,effort:'auto',timeoutMs:Math.max(120000,Number(this.config.requestTimeoutMs||240000)-30000)},null);
-  const match=String(answer.text||'').match(/<svg\b[\s\S]*?<\/svg>/i);
-  if(!match)fail(502,'claude_svg_not_returned','Claude did not return an SVG image. No fake placeholder was generated');
-  const svg=match[0];
-  const scan=svg.replace(/xmlns(?::[A-Za-z]+)?\s*=\s*([\x22\x27])[^\x22\x27]*\1/gi,'');
-  const check={oversize:svg.length>150000,activeTag:/<\s*(?:script|foreignObject|iframe|image|use|object|embed|link)\b/i.test(svg),eventHandler:/\bon[a-z]+\s*=/i.test(svg),href:/(?:href|xlink:href)\s*=/i.test(svg),external:/(?:https?:|file:|javascript:|data:)/i.test(scan)};
-  console.info('[ORBIT-CLAUDE-SVG-VALIDATION]',JSON.stringify(check));
-  if(check.oversize||check.activeTag||check.eventHandler||check.href||check.external)
-   fail(502,'claude_svg_unsafe','Claude SVG contained unsupported active or external content');
-  await this.open('claude');
-  const page=await this.contexts.get('claude').newPage();
-  try{
-   await page.setViewportSize({width:1024,height:1024});
-   // SVG is loaded as an image (not active document), with an image-only CSP.
-   const encoded=Buffer.from(svg).toString('base64');
-   await page.setContent('<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; img-src data:; style-src \'unsafe-inline\'"><style>html,body{margin:0;width:1024px;height:1024px;background:white}img{width:1024px;height:1024px;object-fit:contain}</style><img id="generated" src="data:image/svg+xml;base64,'+encoded+'">');
-   const img=page.locator('#generated');
-   await img.evaluate(async el=>{if(!el.complete)await new Promise((resolve,reject)=>{el.onload=resolve;el.onerror=reject;setTimeout(()=>reject(Error('image timeout')),8000)});if(!el.naturalWidth)throw Error('invalid svg')});
-   const bytes=await img.screenshot({type:'png',timeout:20000});
-   if(bytes.length<1000||bytes.length>12000000)fail(502,'claude_svg_render_failed','SVG render returned invalid output');
-   console.info('[ORBIT-IMAGE]',JSON.stringify({provider:'claude',phase:'svg_rendered',bytes:bytes.length}));
-   return {created:Math.floor(Date.now()/1000),provider:'claude',generation_method:'svg_render',mime_type:'image/png',data:[{b64_json:bytes.toString('base64')}]};
-  }finally{await page.close().catch(()=>{});}
  }
  async _aiModeImage(request){
   if(request.mode!=='generate')fail(501,'aimode_image_edit_unimplemented','AI Mode image editing is not supported');
@@ -343,7 +216,7 @@ export class BrowserHub {
  }
  async image(provider,request){
   if(provider==='aimode')return this._aiModeImage(request);
-  if(provider==='claude')return this._claudeSvgImage(request);
+
   if(provider!=='gemini')fail(422,'image_not_supported','Image generation is unavailable for this browser provider');
   if(request.mode!=='generate')fail(501,'gemini_edit_unimplemented','Gemini image editing is not yet implemented in this browser worker');
   if(request.model)fail(422,'image_model_unverified','Use model gemini for web image generation');
@@ -440,16 +313,13 @@ export class BrowserHub {
   try{return await this._send(provider,request,onProgress);}finally{
    this.locks.delete(provider);
    // Prepare next new-chat composer after work completes, without delaying response.
-   if(WARM_TABS&&['gemini','claude'].includes(provider))
+   if(WARM_TABS&&['gemini'].includes(provider))
     void this._warm(provider).catch(()=>{});
   }
  }
  async _send(provider,{messages,model,effort='auto',conversation_id,native_project_id=null,timeoutMs=180000},onProgress){
   const pack=packs[provider];
-  if(native_project_id){
-    if(provider!=='claude'||!/^\/project\/[a-f0-9-]{36}$/.test(native_project_id))
-      fail(422,'native_project_unverified','Only validated Claude project routes may be selected here');
-  }
+  if(native_project_id)fail(422,'native_project_unverified','Native project unavailable for this browser provider');
   let page;let stage='start';let promptSubmitted=false;let network=null;
   const timing={started:performance.now(),navigation_done:null,editor_ready:null,submitted:null};
   const perf=(phase,extra={})=>console.info('[ORBIT-COMPOSER-PERF]',JSON.stringify({
@@ -464,7 +334,7 @@ export class BrowserHub {
   else{
    // Use a previously hydrated composer, never a conversation page.
    await this.open(provider);
-   if(WARM_TABS&&['gemini','claude'].includes(provider)){
+   if(WARM_TABS&&['gemini'].includes(provider)){
     await this.warmPromises.get(provider);
     const warm=this.warmPages.get(provider);
     if(warm&&!warm.isClosed()){
@@ -478,20 +348,6 @@ export class BrowserHub {
    }
   }
   timing.navigation_done=performance.now();perf('page_ready');
-  if(provider==='claude'){
-    if(conversation_id){
-      const bound=this.threads.get(conversation_id)?.nativeProjectId||null;
-      if(bound!==native_project_id)fail(409,'project_chat_mismatch','This Claude conversation belongs to a different project. No message was sent.');
-    }else if(native_project_id){
-      stage='open_native_project';
-      const destination='https://claude.ai'+native_project_id;
-      await page.goto(destination,{waitUntil:'domcontentloaded',timeout:45000});
-      if(new URL(page.url()).pathname!==native_project_id)fail(503,'claude_project_navigation','Claude did not open the selected project. Nothing was sent.');
-      await page.locator(packs.claude.editor.join(',')).filter({visible:true}).first().waitFor({state:'visible',timeout:30000});
-      // Verify the project page still owns the composer when the editor hydrates.
-      if(new URL(page.url()).pathname!==native_project_id)fail(503,'claude_project_navigation','Claude left the selected project. Nothing was sent.');
-    }
-  }
   if(provider==='gpt'){
     try{
       network=this.networkCaptures.get(page);
@@ -539,7 +395,7 @@ export class BrowserHub {
   const buttonVisible=await send.isVisible().catch(()=>false);
   perf('send_control_checked',{button_visible:buttonVisible});
   stage='submit_prompt';
-  if(provider==='claude')await activeEditor.press('Enter',{timeout:12000});else if(buttonVisible)await send.click({timeout:5000});else await activeEditor.press('Enter',{timeout:5000});
+  if(buttonVisible)await send.click({timeout:5000});else await activeEditor.press('Enter',{timeout:5000});
   // Playwright returned from the one permitted submit attempt. No blind retry.
   promptSubmitted=true;timing.submitted=performance.now();
   perf('click_returned',{method:buttonVisible?'button':'enter'});
@@ -599,7 +455,7 @@ export class BrowserHub {
       perf('completed',{generation_ms:Math.round(performance.now()-timing.submitted)});
       stage='persist_thread';const persisted=await this._store(threadId,provider,page,native_project_id);report('completed',{reply_chars:last.length,source:networkReply?'gpt_passive_network':'dom',elapsed_ms:Date.now()-start});
       // Keep only the latest completed chat hot for fast follow-up; preserve disk mapping.
-      if(persisted&&WARM_TABS&&['gemini','claude'].includes(provider)){
+      if(persisted&&WARM_TABS&&['gemini'].includes(provider)){
        for(const [oldId,thread] of this.threads){
         if(oldId===threadId||thread.provider!==provider)continue;
         this.threads.delete(oldId);

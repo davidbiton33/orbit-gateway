@@ -11,18 +11,18 @@ test('project-link discovery accepts only exact provider origins and project rou
  assert.equal(normalizeProviderProject('gpt',{href:'https://chatgpt.com/g/g-p-demo-123456',name:'My App'}).name,'My App');
  assert.equal(normalizeProviderProject('gpt',{href:'https://chatgpt.com/c/not-a-project',name:'Private chat'}),null);
  assert.equal(normalizeProviderProject('gpt',{href:'https://chatgpt.com.evil.com/g/g-p-demo-123456',name:'Injected'}),null);
- assert.equal(normalizeProviderProject('claude',{href:'/project/0123456789abcdef',name:'Claude Work'}).provider,'claude');
- assert.equal(normalizeProviderProject('claude',{href:'/new',name:'New Chat'}),null);
+ assert.equal(normalizeProviderProject('gemini',{href:'/project/0123456789abcdef',name:'Old project'}),null);
+ assert.equal(normalizeProviderProject('gemini',{href:'/new',name:'New Chat'}),null);
  assert.equal(normalizeProviderProject('gemini',{href:'/notebook/32b2403e-59ab-4e53-a902-d60e4d88d655',name:'מחברת Gemini'}).provider,'gemini');
  assert.equal(normalizeProviderProject('gemini',{href:'/notebooks/create',name:'New notebook'}),null);
 });
 test('native project discovery deduplicates links and refuses to claim completeness if no matches',async()=>{
  const page={locator:()=>({evaluateAll:async callback=>callback([
-  {getAttribute:k=>k==='href'?'/project/0123456789abcdef':null,innerText:'Work'},
-  {getAttribute:k=>k==='href'?'/project/0123456789abcdef':null,innerText:'Work'},
+  {getAttribute:k=>k==='href'?'/notebook/32b2403e-59ab-4e53-a902-d60e4d88d655':null,innerText:'Work'},
+  {getAttribute:k=>k==='href'?'/notebook/32b2403e-59ab-4e53-a902-d60e4d88d655':null,innerText:'Work'},
   {getAttribute:k=>k==='href'?'/new':null,innerText:'New chat'}
  ])})};
- const data=await discoverProviderProjects(page,'claude');
+ const data=await discoverProviderProjects(page,'gemini');
  assert.equal(data.projects.length,1);assert.equal(data.status,'ok');
  const empty=await discoverProviderProjects({locator:()=>({evaluateAll:async()=>[]})},'gpt');
  assert.equal(empty.status,'unverified_empty');
@@ -44,8 +44,8 @@ test('Native project id is allowed only for GPT chat, not for unknown backend or
  const {validateRequest}=await import('../src/lib/catalog.mjs');
  const project='g-p-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
  assert.equal(validateRequest({model:'gpt',native_project_id:project}).native_project_id,project);
- assert.equal(validateRequest({model:'claude',native_project_id:'/project/11111111-1111-4111-8111-111111111111'}).native_project_id,'/project/11111111-1111-4111-8111-111111111111');
- assert.throws(()=>validateRequest({model:'claude',native_project_id:project}),e=>e.code==='native_project_unverified');
+ assert.throws(()=>validateRequest({model:'gemini',native_project_id:'/project/11111111-1111-4111-8111-111111111111'}),{code:'native_project_unverified'});
+ assert.throws(()=>validateRequest({model:'gemini',native_project_id:project}),e=>e.code==='native_project_unverified');
  assert.throws(()=>validateRequest({model:'gpt',native_project_id:'p-1'}),e=>e.code==='native_project_unverified');
  assert.throws(()=>validateRequest({model:'gpt',native_project_id:project},'image'),e=>e.code==='native_project_unverified');
 });

@@ -1,8 +1,8 @@
 import {ProviderQueue} from '../src/lib/provider-queue.mjs';
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
 const q=new ProviderQueue({limit:20,waitMs:4000});
-const active={gpt:0,gemini:0,claude:0},peaks={...active},started=performance.now();
-const providers=['gpt','gemini','claude'];
+const active={gpt:0,gemini:0,aimode:0},peaks={...active},started=performance.now();
+const providers=['gpt','gemini','aimode'];
 const tasks=providers.flatMap(p=>Array.from({length:10},()=>q.run(p,async()=>{
  active[p]++;peaks[p]=Math.max(peaks[p],active[p]);
  await wait(35);active[p]--;

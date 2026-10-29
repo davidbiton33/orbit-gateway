@@ -2,7 +2,6 @@
    This is not a provider API, and cannot guarantee a complete projects listing. */
 const PROVIDERS={
   gpt:{origin:'https://chatgpt.com',paths:[/^\/g\/g-p-[^/?#]{5,}/i,/^\/project\/[^/?#]{5,}/i]},
-  claude:{origin:'https://claude.ai',paths:[/^\/project\/[^/?#]{5,}/i,/^\/projects\/[^/?#]{5,}/i]}
 };
 export function normalizeProviderProject(provider,record) {
  const rule=PROVIDERS[provider];if(!rule)return null;

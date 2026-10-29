@@ -32,7 +32,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\start-clean-test.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\verify-clean.ps1
 ```
 
-תקבל PASS עבור `gateway`, `gpt`, `gemini` ו־`claude`. הסקריפט מאמת שכל Container שייך לפרויקט האקראי החדש ושה־volumes שלו נושאים את שם הפרויקט. הוא ייכשל אם ימצא mount של volume זר. זו הוכחה לבידוד ברמת Docker, **לא** הוכחה לכך שהספק אישר התחברות.
+תקבל PASS עבור `gateway`, `gpt` ו־`gemini`. הסקריפט מאמת שכל Container שייך לפרויקט האקראי החדש ושה־volumes שלו נושאים את שם הפרויקט. הוא ייכשל אם ימצא mount של volume זר. זו הוכחה לבידוד ברמת Docker, **לא** הוכחה לכך שהספק אישר התחברות.
 
 אפשר לראות את שם הפרויקט והפורטים בקובץ `.env.docker` המקומי, **אבל אל תשלח אותו לאף אחד**: הוא מכיל טוקן אישי.
 
@@ -44,7 +44,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\verify-clean.ps1
 |---|---|---|
 | GPT — Docker | `http://127.0.0.1:6181/vnc.html` | `.\docker.ps1 --profile gpt-docker exec gpt bash /app/docker/login-native.sh` |
 | Gemini | `http://127.0.0.1:6182/vnc.html` | `.\docker.ps1 exec gemini bash /app/docker/login-native.sh` |
-| Claude | `http://127.0.0.1:6183/vnc.html` | `.\docker.ps1 exec claude bash /app/docker/login-native.sh` |
+| | `http://127.0.0.1:6183/vnc.html` | `.\docker.ps1 exec bash /app/docker/login-native.sh` |
 
 **סדר הפעולות:** פתח noVNC -> הרץ את פקודת הספק -> המתן לפתיחת Chrome -> התחבר באתר הרשמי ידנית (כולל אימות דו־שלבי או CAPTCHA אם נדרש) -> ודא שהצ'אט מופיע -> **סגור את כל חלונות Chrome של אותו ספק בתוך noVNC** -> פקודת ההתחברות מסתיימת. עכשיו אפשר לשלוח הודעה מה־Studio. אם שליחת ההודעה נכשלת, פתח noVNC וראה מה מוצג, במקום להתחיל שוב עם פרופיל אחר.
 
@@ -58,7 +58,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\verify-clean.ps1
 2. לפני ההתחברות הראשונה: שלח הודעת ניסיון ל־Gemini וודא שלא מתקבלת תשובת AI רגילה מחשבון שכבר מחובר. אם כן, בדוק שוב `verify-clean.ps1` וקובצי ההתקנה לפני שתמשיך.
 3. בצע התחברות ידנית חדשה ב־Gemini לפי סעיף 4.
 4. חזור ל־Studio ושלח ל־Gemini הודעת ניסיון ושאלת המשך **באותה שיחה**. בדוק שהתגובה השנייה מתייחסת לראשונה.
-5. חזור על הפעולה עם GPT ו־Claude.
+5. חזור על הפעולה עם GPT.
 6. בדוק גם החלפת GPT Legacy (סעיף 6), אם דרושות תכונות הפרויקטים המקוריים של GPT.
 7. לבדיקת API אוטומטית **לאחר** ההתחברויות אפשר להריץ מתוך תיקיית הבדיקה `powershell -NoProfile -ExecutionPolicy Bypass -File .\smoke-docker.ps1`. הבדיקה שולחת הודעות אמיתיות לספקים.
 
@@ -90,7 +90,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\switch-gpt.ps1 -Backend do
 powershell -NoProfile -ExecutionPolicy Bypass -File .\setup-docker.ps1
 ```
 
-במצב זה ברירת המחדל היא Studio `4983`, API `4984`, Gemini ו־Claude בפורטים `6082/6083`, ו־GPT Legacy בפורט `6080` (GPT Docker האופציונלי ב־`6081`). גם כאן שם פרויקט Docker אקראי ו־volumes ריקים; ההבדל ממסלול CleanTest הוא בעיקר הפרדת התיקיות והפורטים.
+במצב זה ברירת המחדל היא Studio `4983`, API `4984`, Gemini בפורט `6082`, ו־GPT Legacy בפורט `6080` (GPT Docker האופציונלי ב־`6081`). גם כאן שם פרויקט Docker אקראי ו־volumes ריקים; ההבדל ממסלול CleanTest הוא בעיקר הפרדת התיקיות והפורטים.
 
 ## 8. ניהול והסרה ללא פגיעה בהתקנות אחרות
 
@@ -108,7 +108,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\setup-docker.ps1
 
 ## 9. פרטיות ומגבלות
 
-- Orbit ניגש לאתרי ChatGPT, Gemini ו־Claude דרך דפדפנים, **לא** דרך API רשמי שלהם. תנאי שימוש, שינויי UI, מגבלות חשבון ובקשות אימות יכולים להשפיע על הפעולה.
+- Orbit ניגש לאתרי ChatGPT ו־Gemini דרך דפדפנים, **לא** דרך API רשמי שלהם. תנאי שימוש, שינויי UI, מגבלות חשבון ובקשות אימות יכולים להשפיע על הפעולה.
 - הספקים שומרים את השיחות אצלם כרגיל; ה־Gateway שומר מטא־דאטה ופרופילי התחברות ב־volumes המקומיים.
 - לא לחשוף את פורטי Studio, API או noVNC לרשת. כולם משויכים ל־`127.0.0.1` במחשב המקומי.
 - תמונות ופיצ'רי פרויקטים מקוריים של ChatGPT דורשים כרגע GPT Legacy; אין להבטיח אותם במנוע Docker הכללי.
@@ -159,6 +159,6 @@ cd C:\Orbit-Gateway
 
 פתח את כתובת Legacy noVNC שהפקודה מדפיסה (בדרך כלל 6080), והתחבר בחלון Chrome שכבר פתוח. אין להריץ את `login-native.sh` במנוע Legacy ואין לסגור את הדפדפן שמנוהל על ידי ה־Worker אחרי ההתחברות. אימות אנושי חוזר באתר ChatGPT אינו משהו שה־Gateway יכול להבטיח לעקוף.
 
-כרטיסיות Gemini ו־Claude שנשארות פתוחות אחרי הודעות Studio/API הן בדרך כלל חלק מניהול השיחות: ה־Worker ממפה כל שיחה פעילה לכרטיסייה, ושומר קישור לשחזור שיחות אחרי אתחול. סגירת כל הכרטיסיות אוטומטית עלולה לשבור הודעות המשך. יש להבדיל בין **Chrome של סקריפט התחברות**, שסוגרים את כל חלונותיו כדי לסיים את הפקודה, לבין **Chrome של ה־Worker**, שנשאר פתוח בזמן פעולת השירות.
+כרטיסיות Gemini שנשארות פתוחות אחרי הודעות Studio/API הן בדרך כלל חלק מניהול השיחות: ה־Worker ממפה כל שיחה פעילה לכרטיסייה, ושומר קישור לשחזור שיחות אחרי אתחול. סגירת כל הכרטיסיות אוטומטית עלולה לשבור הודעות המשך. יש להבדיל בין **Chrome של סקריפט התחברות**, שסוגרים את כל חלונותיו כדי לסיים את הפקודה, לבין **Chrome של ה־Worker**, שנשאר פתוח בזמן פעולת השירות.
 
 אם יש הרבה כרטיסיות ישנות, זהו מקום לשיפור עתידי (TTL/LRU ושחזור מאומת), לא סיבה למחוק פרופילים או Volumes.

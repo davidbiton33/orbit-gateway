@@ -3,7 +3,7 @@ x-worker-common: &worker-common
   build:
     context: .
     dockerfile: docker/Dockerfile.oracle
-  image: ${COMPOSE_PROJECT_NAME:-orbit-gateway}-worker:2.4.0-oracle-arm64
+  image: ${COMPOSE_PROJECT_NAME:-orbit-gateway}-worker:2.4.1-oracle-arm64
   restart: unless-stopped
   init: true
   shm_size: '512mb'
@@ -23,10 +23,8 @@ x-worker-common: &worker-common
     ORBIT_CLOUD_ARM64: "1"
     ORBIT_LOGIN_BROWSER: /app/docker/chromium-launch.sh
     BROWSER_HEADLESS: "false"
-    CLAUDE_HEADLESS: "false"
     GPT_MODE: browser
     GEMINI_MODE: browser
-    CLAUDE_MODE: browser
   expose:
     - "4984"
     - "6080"
@@ -49,11 +47,9 @@ services:
       GATEWAY_DATA_DIR: /app/data
       GPT_MODE: remote
       GEMINI_MODE: remote
-      CLAUDE_MODE: remote
       GPT_ORIGIN: http://gpt:4984
       GPT_LEGACY_ORIGIN: http://gpt-legacy:4982
       GEMINI_ORIGIN: http://gemini:4984
-      CLAUDE_ORIGIN: http://claude:4984
       AIMODE_MODE: remote
       AIMODE_ORIGIN: http://gemini:4984
     ports:
@@ -63,8 +59,6 @@ services:
       - gateway-data:/app/data
     depends_on:
       gemini:
-        condition: service_healthy
-      claude:
         condition: service_healthy
     healthcheck:
       test: ["CMD","bash","/app/docker/healthcheck.sh"]
@@ -89,7 +83,7 @@ services:
     build:
       context: ./legacy-gpt
       dockerfile: docker/Dockerfile.oracle
-    image: ${COMPOSE_PROJECT_NAME:-orbit-gateway}-legacy:2.4.0-oracle-arm64
+    image: ${COMPOSE_PROJECT_NAME:-orbit-gateway}-legacy:2.4.1-oracle-arm64
     init: true
     restart: unless-stopped
     shm_size: '1gb'
@@ -142,22 +136,12 @@ services:
       - "127.0.0.1:${ORBIT_AIMODE_VNC_PORT:-6084}:6080"
     volumes:
       - aimode-data:/app/data
-  claude:
-    <<: *worker-common
-    environment:
-      <<: *worker-env
-      WORKER_PROVIDER: claude
-    ports:
-      - "127.0.0.1:${ORBIT_CLAUDE_VNC_PORT:-6083}:6080"
-    volumes:
-      - claude-data:/app/data
 volumes:
   gateway-data:
   gpt-data:
   legacy-gpt-profile:
   gemini-data:
   aimode-data:
-  claude-data:
 networks:
   orbit-internal:
     driver: bridge

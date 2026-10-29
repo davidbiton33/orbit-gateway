@@ -1,4 +1,4 @@
-## 2.4.0 (2026-10-29)
+## 2.4.1 (2026-10-29)
 
 - Verified GPT CSV attachments and Gemini native Word/downloads.
 - Gemini table-to-CSV and DOCX-to-PDF conversion using LibreOffice.

@@ -31,7 +31,7 @@ function validateOrigin(req,ui,config){
 function validateMessages(m){if(!Array.isArray(m)||m.length===0||m.length>70||m.some(x=>!['system','user','assistant'].includes(x?.role)||typeof x.content!=='string'||x.content.length>24000))fail(400,'invalid_messages','messages must contain 1-70 plain-text role/content entries');}
 function endPointEdit(endpoint,input){return endpoint==='/v1/images/edits'||input.mode==='edit';}
 function imageData(input){if(input.image){if(typeof input.image!=='string'||input.image.length>15e6)fail(413,'invalid_image','Image payload too large');const m=/^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/]+={0,2})$/.exec(input.image);if(!m)fail(400,'invalid_image','Use a PNG/JPEG/WebP data URL');const b=Buffer.from(m[2],'base64');if(b.length<12||b.length>10e6)fail(400,'invalid_image','Image size invalid');const png=b.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]));const jpg=b[0]===255&&b[1]===216&&b[2]===255;const webp=b.toString('ascii',0,4)==='RIFF'&&b.toString('ascii',8,12)==='WEBP';if(!((png&&m[1]==='image/png')||(jpg&&m[1]==='image/jpeg')||(webp&&m[1]==='image/webp')))fail(400,'image_signature_mismatch','File signature does not match MIME');return {imageBase64:m[2],inputMime:m[1]};}return {};}
-function runtimeCatalog(config){const result=catalogResponse();for(const item of result.data)if(item.capabilities){if(item.owned_by==='gpt'&&['browser','remote'].includes(config.gptMode))item.capabilities.image_generation=false;if(item.owned_by==='gpt')item.capabilities.projects_native=config.gptMode==='legacy';if(item.owned_by==='claude')item.capabilities.projects_native=['browser','remote'].includes(config.claudeMode);}return result;}
+function runtimeCatalog(config){const result=catalogResponse();for(const item of result.data)if(item.capabilities){if(item.owned_by==='gpt'&&['browser','remote'].includes(config.gptMode))item.capabilities.image_generation=false;if(item.owned_by==='gpt')item.capabilities.projects_native=config.gptMode==='legacy';}return result;}
 function runtimeProviders(config){return Object.fromEntries(Object.entries(CATALOG).map(([name,p])=>[name,{...p,images:(name==='gpt'&&['browser','remote'].includes(config[name+'Mode']))?false:p.images}]));}
 function openaiResponse(request,result){return {id:'chatcmpl-'+randomUUID(),object:'chat.completion',created:Math.floor(Date.now()/1000),model:request.model,provider:request.provider,actual_model:result.actual_model,model_selection_verified:result.selection_verified,conversation_id:result.conversation_id||null,...(result.attachments?.length?{attachments:result.attachments}:{}),...(result.file_warning?{file_warning:result.file_warning}:{}),choices:[{index:0,message:{role:'assistant',content:result.text},finish_reason:result.finish_reason||'stop'}]};}
 function openaiSse(res,id,model,delta,extra={}){const finish_reason=extra.finish_reason??null;const fields={...extra};delete fields.finish_reason;res.write('data: '+JSON.stringify({id,object:'chat.completion.chunk',created:Math.floor(Date.now()/1000),model,choices:[{index:0,delta,finish_reason}],...fields})+'\n\n');}
@@ -68,7 +68,7 @@ export function createServers(config,{manager=new ProviderManager(config),projec
   if(ui && !/^(127\.0\.0\.1|localhost)(:\d+)?$/.test(String(req.headers.host||''))&&!isTailnetStudioHost(req,config))fail(403,'invalid_host','UI is localhost-only');
   if(ui && req.method==='GET'&&(p==='/'||['/index.html','/app.js','/style.css'].includes(p))){const name=p==='/'?'index.html':p.slice(1);const file=path.join(PUBLIC,name);const info=await stat(file);if(!info.isFile())fail(404,'not_found','Not found');res.writeHead(200,{'Content-Type':TYPES[path.extname(file)],'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'"});res.end(await readFile(file));return;}
   // Public, non-secret instance ports are for the local Studio UI only. Never expose the API token.
-  if(ui&&req.method==='GET'&&p==='/play/v1/instance')return json(res,200,{ui_port:Number(process.env.ORBIT_UI_PORT||config.uiPort),api_port:Number(process.env.ORBIT_API_PORT||config.apiPort),vnc:{gpt:Number(process.env.ORBIT_GPT_VNC_PORT||6081),legacy:Number(process.env.ORBIT_GPT_LEGACY_VNC_PORT||6080),gemini:Number(process.env.ORBIT_GEMINI_VNC_PORT||6082),claude:Number(process.env.ORBIT_CLAUDE_VNC_PORT||6083)}});
+  if(ui&&req.method==='GET'&&p==='/play/v1/instance')return json(res,200,{ui_port:Number(process.env.ORBIT_UI_PORT||config.uiPort),api_port:Number(process.env.ORBIT_API_PORT||config.apiPort),vnc:{gpt:Number(process.env.ORBIT_GPT_VNC_PORT||6081),legacy:Number(process.env.ORBIT_GPT_LEGACY_VNC_PORT||6080),gemini:Number(process.env.ORBIT_GEMINI_VNC_PORT||6082)}});
   // UI's same-origin proxy never exposes the backend token to browser JavaScript.
   if(ui&&!p.startsWith('/play/'))fail(404,'not_found','UI route not found');
   if(!ui && !bearer(req,config.token)){json(res,401,{error:{message:'Valid Bearer token required',code:'unauthorized'}});return;}
@@ -85,7 +85,7 @@ export function createServers(config,{manager=new ProviderManager(config),projec
       bytes=artifact.bytes;mime=artifact.metadata.mime_type;filename=artifact.metadata.filename;
     }else{
       const provider=artifactProvider(id);
-      const origin=provider==='gpt'?config.gptOrigin:provider==='claude'?config.claudeOrigin:config.geminiOrigin;
+      const origin=provider==='gpt'?config.gptOrigin:config.geminiOrigin;
       let remote;try{remote=await fetch(origin+'/v1/files/'+id+'/content',{headers:{authorization:'Bearer '+config.token},redirect:'error',signal:AbortSignal.timeout(30000)});}catch{fail(503,'file_worker_unreachable','File worker is unavailable');}
       if(!remote.ok){let code='file_not_found';try{code=(await remote.json())?.error?.code||code;}catch{}fail(remote.status,code,'File is not available');}
       const bytesArray=await remote.arrayBuffer();
@@ -103,7 +103,7 @@ export function createServers(config,{manager=new ProviderManager(config),projec
   if(req.method==='GET'&&endpoint==='/v1/doctor')return json(res,200,{providers:await manager.status(),api_auth:'required',ui_binding:'localhost_only',remote_exposure:'Tailscale Serve API only'});
   if(req.method==='GET'&&endpoint==='/v1/projects/native'){
    const provider=u.searchParams.get('provider');
-   if(!['gpt','gemini','claude'].includes(provider))fail(400,'invalid_provider','Use provider=gpt|gemini|claude');
+   if(!['gpt','gemini'].includes(provider))fail(400,'invalid_provider','Use provider=gpt|gemini');
    assertWorkerProvider(config,provider);
    return json(res,200,await manager.nativeProjects(provider));
   }
@@ -114,13 +114,13 @@ export function createServers(config,{manager=new ProviderManager(config),projec
   }
   if(endpoint==='/v1/projects/native/open-chat'&&req.method==='POST'){
    const b=await readJson(req);
-   if(!['gpt','claude'].includes(b?.provider))fail(422,'native_project_unverified','Native chat opening supports ChatGPT and Claude');
+   if(!['gpt'].includes(b?.provider))fail(422,'native_project_unverified','Native chat opening supports ChatGPT only');
    assertWorkerProvider(config,b.provider);
    return json(res,200,await manager.openNativeProjectChat(b.provider,b.project_id,b.chat_url));
   }
   if(endpoint==='/v1/projects/native'&&req.method==='POST'){
    const b=await readJson(req);
-   if(!['gpt','claude'].includes(b?.provider))fail(422,'native_project_unverified','Native project creation supports ChatGPT and Claude');
+   if(!['gpt'].includes(b?.provider))fail(422,'native_project_unverified','Native project creation supports ChatGPT only');
    assertWorkerProvider(config,b.provider);
    return json(res,201,await manager.createNativeProject(b.provider,b.name,b.description||''));
   }
@@ -129,7 +129,7 @@ export function createServers(config,{manager=new ProviderManager(config),projec
   if(req.method==='POST'&&endpoint==='/v1/preflight'){
    const b=await readJson(req),routing=validateRequest(b);assertWorkerProvider(config,routing.provider);await projects.assertExists(routing.project_id);
    const mode=await manager.mode(routing.provider);
-   if(routing.native_project_id && !((routing.provider==='gpt'&&mode==='legacy')||(routing.provider==='claude'&&['browser','remote'].includes(mode))))fail(422,'native_project_backend_unverified','Native project backend is unavailable');
+   if(routing.native_project_id && !((routing.provider==='gpt'&&mode==='legacy')))fail(422,'native_project_backend_unverified','Native project backend is unavailable');
    if(!routing.default&&mode==='legacy')fail(422,'model_unverified','Named model selection not verified by legacy worker. No prompt sent.');
    if(routing.effort!=='auto'&&mode==='legacy')fail(422,'effort_unverified','Thinking selection not verified by legacy worker. No prompt sent.');
    return json(res,200,{ready:true,provider:routing.provider,mode,model:routing.requested,model_selection_verified:routing.default?false:null,effort:routing.effort,project_scope:routing.native_project_id?'provider_native':'local_metadata_only'});
@@ -139,7 +139,7 @@ export function createServers(config,{manager=new ProviderManager(config),projec
    if(b.messages.length>1&&!b.conversation_id)fail(422,'history_requires_conversation_id','For browser conversations, use conversation_id to continue. This gateway cannot replay arbitrary chat history safely.');
    if(b.conversation_id!=null&&(!/^[\w-]{1,120}$/.test(b.conversation_id)))fail(400,'invalid_conversation_id','Invalid conversation ID');
    const activeMode=await manager.mode(r.provider);
-   if(r.native_project_id && !((r.provider==='gpt'&&activeMode==='legacy')||(r.provider==='claude'&&['browser','remote'].includes(activeMode))))fail(422,'native_project_backend_unverified','Native project backend is unavailable; no prompt sent');
+   if(r.native_project_id && !((r.provider==='gpt'&&activeMode==='legacy')))fail(422,'native_project_backend_unverified','Native project backend is unavailable; no prompt sent');
    if(!r.default&&activeMode==='legacy')fail(422,'model_unverified','Named model choice cannot be verified by legacy adapter; no request sent');
    if(r.effort!=='auto'&&activeMode==='legacy')fail(422,'effort_unverified','Thinking effort cannot be verified by legacy adapter; no request sent');
    const request={...r,model:r.default?null:r.requested,messages:b.messages,conversation_id:b.conversation_id||null,timeoutMs:config.requestTimeoutMs};

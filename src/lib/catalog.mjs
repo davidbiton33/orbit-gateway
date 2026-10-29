@@ -3,7 +3,6 @@ export const CATALOG={
  gpt:{display:'ChatGPT',native_project:'Projects',defaults:['gpt','gpt-web-chat'],models:['gpt-6','gpt-5.6','gpt-5.5'],efforts:['instant','medium','high','extra_high','pro'],images:true},
  aimode:{display:'Google AI Mode',native_project:'History',defaults:['google-ai-mode','google-ai-mode-fast'],models:[],efforts:[],images:true,imageMethod:'ai_mode_web'},
  gemini:{display:'Gemini',native_project:'Notebooks',defaults:['gemini','gemini-web-chat'],models:['gemini-pro','gemini-flash'],efforts:['low','medium','high'],images:true},
- claude:{display:'Claude',native_project:'Projects',defaults:['claude','claude-web-chat'],models:['claude-sonnet','claude-opus','claude-haiku'],efforts:['low','medium','high'],images:true,imageMethod:'svg_render'}
 };
 export function identifyModel(model){if(typeof model!=='string'||model.length>70)fail(400,'invalid_model','model parameter must be a short string');
  for(const [provider,p] of Object.entries(CATALOG))if([...p.defaults,...p.models].includes(model))return {provider,requested:model,default:p.defaults.includes(model)};
@@ -18,7 +17,7 @@ export function validateRequest(input,feature='chat'){
  if(input.project_mode==='native'&&!input.native_project_id)fail(422,'native_project_unverified','Select a verified native provider project first');
  const nativeId=input.native_project_id??null;
  if(nativeId!=null){
-  if(feature!=='chat'||typeof nativeId!=='string'||!((routing.provider==='gpt'&&/^g-p-[A-Za-z0-9_-]{6,90}$/.test(nativeId))||(routing.provider==='claude'&&/^\/project\/[a-f0-9-]{36}$/.test(nativeId))))
+  if(feature!=='chat'||typeof nativeId!=='string'||!((routing.provider==='gpt'&&/^g-p-[A-Za-z0-9_-]{6,90}$/.test(nativeId))))
    fail(422,'native_project_unverified','Native project routing is supported only for verified ChatGPT g-p project IDs');
  }
  if(input.project_id!=null&&(!/^[a-zA-Z0-9_-]{1,80}$/.test(String(input.project_id))))fail(422,'invalid_project','project_id contains invalid characters');

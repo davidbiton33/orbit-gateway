@@ -20,6 +20,5 @@ COPY ./config ./config
 COPY ./public ./public
 COPY ./docker ./docker
 RUN chmod +x /app/docker/*.sh && mkdir -p /app/data
-ENV NODE_ENV=production DISPLAY=:99 GATEWAY_DATA_DIR=/app/data GATEWAY_BROWSER_CHANNEL=chrome BROWSER_HEADLESS=false CLAUDE_HEADLESS=false
 EXPOSE 4984 4983 6080
 CMD ["bash","/app/docker/entrypoint.sh"]

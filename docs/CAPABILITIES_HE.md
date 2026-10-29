@@ -1,6 +1,6 @@
 # Orbit Gateway 2.3.1 — יכולות בפועל (26.10.2026)
 
-| יכולת | GPT | Gemini | Google AI Mode Lite | Claude |
+| יכולת | GPT | Gemini | Google AI Mode Lite | |
 |---|---|---|---|---|
 | צ'אט | כן | כן | כן, אומת ב־Oracle | כן |
 | המשך שיחה | תלוי Backend | שמירה וטאב חם | ניסיוני ולא אומת מקצה לקצה | שמירה וטאב חם |

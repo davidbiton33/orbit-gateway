@@ -5,6 +5,5 @@ API_PORT=5284
 STUDIO_PORT=5283
 GPT_MODE=browser
 GEMINI_MODE=browser
-CLAUDE_MODE=browser
 AIMODE_MODE=browser
 # ORBIT_REMOTE_STUDIO_HOST=your-device.your-tailnet.ts.net

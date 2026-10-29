@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-const file = async path => readFile(new URL(path, import.meta.url),'utf8');
+const file = async path => (await readFile(new URL(path, import.meta.url),'utf8')).replaceAll('\r\n','\n');
 test('Every fresh installation uses unique project and random credential',async()=>{
   const setup=await file('../setup-docker.ps1');
   assert.match(setup,/NewGuid\(\)\.ToString\('N'\)\.Substring\(0,10\)/);
@@ -26,7 +26,7 @@ test('Compose legacy profile is Compose-owned and every port binds loopback',asy
     assert.match(line,/127\.0\.0\.1:/);
   }
   const mappings=compose.match(/127\.0\.0\.1:\$\{ORBIT_[A-Z_]+_PORT:-\d+\}/g)||[];
-  assert.equal(mappings.length,6);
+  assert.equal(mappings.length,5);
 });
 test('Clean verification rejects any foreign mounted volume',async()=>{
   const script=await file('../verify-clean.ps1');

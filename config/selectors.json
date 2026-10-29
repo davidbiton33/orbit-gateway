@@ -1,27 +1,61 @@
 {
-  "$schema":"selector-pack/v1",
-  "claude":{
-    "editor":["div.ProseMirror[contenteditable='true']","[contenteditable='true'][role='textbox']","div[contenteditable='true'][data-placeholder]"],
-    "send":["button[aria-label='Send message']","button[data-testid='send-button']","button[aria-label*='Send']"],
-    "assistant":["[data-testid='assistant-message']","[data-testid*='assistant'] .prose",".font-claude-response","[data-message-author-role='assistant']"],
-    "stop":["button[aria-label*='Stop']","button[data-testid='stop-button']"],
-    "modelPicker":["button[data-testid='model-selector']","button[aria-label*='model']"],
-    "modelLabels":{"claude-sonnet":"Sonnet","claude-opus":"Opus","claude-haiku":"Haiku"}
+  "$schema": "selector-pack/v1",
+  "gpt": {
+    "editor": [
+      "#prompt-textarea",
+      "[data-testid='prompt-textarea']",
+      "[contenteditable='true'][role='textbox']"
+    ],
+    "send": [
+      "button[data-testid='send-button']",
+      "button[aria-label='Send prompt']",
+      "button[aria-label='שליחה']"
+    ],
+    "assistant": [
+      "[data-message-author-role='assistant']",
+      "article[data-testid*='assistant']"
+    ],
+    "stop": [
+      "button[data-testid='stop-button']",
+      "button[aria-label*='Stop']"
+    ],
+    "modelPicker": [
+      "button[data-testid='model-switcher-dropdown-button']",
+      "button[aria-label*='model']"
+    ],
+    "modelLabels": {
+      "gpt-6": "GPT-6",
+      "gpt-5.6": "GPT-5.6",
+      "gpt-5.5": "GPT-5.5"
+    }
   },
-  "gpt":{
-    "editor":["#prompt-textarea","[data-testid='prompt-textarea']","[contenteditable='true'][role='textbox']"],
-    "send":["button[data-testid='send-button']","button[aria-label='Send prompt']","button[aria-label='שליחה']"],
-    "assistant":["[data-message-author-role='assistant']","article[data-testid*='assistant']"],
-    "stop":["button[data-testid='stop-button']","button[aria-label*='Stop']"],
-    "modelPicker":["button[data-testid='model-switcher-dropdown-button']","button[aria-label*='model']"],
-    "modelLabels":{"gpt-6":"GPT-6","gpt-5.6":"GPT-5.6","gpt-5.5":"GPT-5.5"}
-  },
-  "gemini":{
-    "editor":["div[contenteditable='true'][role='textbox']","rich-textarea div[contenteditable='true']",".ql-editor[contenteditable='true']"],
-    "send":["button[aria-label*='Send']","button[aria-label*='שליחה']","button.send-button"],
-    "assistant":["model-response","message-content","[data-test-id='model-response']"],
-    "stop":["button[aria-label*='Stop']","button[aria-label*='עצור']"],
-    "modelPicker":["button[aria-label*='Model']","button[aria-label*='מודל']"],
-    "modelLabels":{"gemini-pro":"Pro","gemini-flash":"Flash"}
+  "gemini": {
+    "editor": [
+      "div[contenteditable='true'][role='textbox']",
+      "rich-textarea div[contenteditable='true']",
+      ".ql-editor[contenteditable='true']"
+    ],
+    "send": [
+      "button[aria-label*='Send']",
+      "button[aria-label*='שליחה']",
+      "button.send-button"
+    ],
+    "assistant": [
+      "model-response",
+      "message-content",
+      "[data-test-id='model-response']"
+    ],
+    "stop": [
+      "button[aria-label*='Stop']",
+      "button[aria-label*='עצור']"
+    ],
+    "modelPicker": [
+      "button[aria-label*='Model']",
+      "button[aria-label*='מודל']"
+    ],
+    "modelLabels": {
+      "gemini-pro": "Pro",
+      "gemini-flash": "Flash"
+    }
   }
 }

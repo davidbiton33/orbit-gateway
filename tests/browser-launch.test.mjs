@@ -5,12 +5,12 @@ import {launchPersistentBrowser,diagnoseBrowserLaunch,browserOptions} from '../s
 const context={close:async()=>{}};
 test('Uses Playwright Chromium on initial launch, preserves visible login',async()=>{
  const calls=[];const chromium={launchPersistentContext:async(dir,opts)=>{calls.push({dir,opts});return context;}};
- const out=await launchPersistentBrowser(chromium,'/profiles/claude',{browserChannel:'auto',headless:false});
+ const out=await launchPersistentBrowser(chromium,'/profiles/gemini',{browserChannel:'auto',headless:false});
  assert.equal(out.engine,'Playwright Chromium');assert.equal(calls.length,1);assert.equal(calls[0].opts.headless,false);assert.equal(calls[0].opts.channel,undefined);
 });
 test('Falls back to Edge on failed bundled Chromium with SAME intended profile',async()=>{
  const calls=[];const chromium={launchPersistentContext:async(dir,opts)=>{calls.push({dir,opts});if(!opts.channel)throw Error('Executable doesn\'t exist at C:/chromium');return context;}};
- const out=await launchPersistentBrowser(chromium,'/profiles/claude',{browserChannel:'auto'});
+ const out=await launchPersistentBrowser(chromium,'/profiles/gemini',{browserChannel:'auto'});
  assert.equal(out.engine,'Microsoft Edge');assert.equal(out.attempts.length,1);assert.equal(calls.length,2);assert.equal(calls[0].dir,calls[1].dir);assert.equal(calls[1].opts.channel,'msedge');
 });
 test('Explicit Edge setting starts Edge directly',async()=>{
